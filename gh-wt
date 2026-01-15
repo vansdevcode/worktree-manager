@@ -45,6 +45,16 @@ get_default_branch() {
     git --git-dir="$bare_dir" symbolic-ref refs/remotes/origin/HEAD | sed 's@^refs/remotes/origin/@@'
 }
 
+# Generate URL-safe slug from branch name
+generate_branch_slug() {
+    local branch="$1"
+    echo "$branch" | tr '[:upper:]/' '[:lower:]-' | \
+        sed 's/[^a-z0-9-]/-/g' | \
+        sed 's/--*/-/g' | \
+        sed 's/^-//' | \
+        sed 's/-$//'
+}
+
 # Convert org/repo format to git@github.com:org/repo.git
 convert_gh_format() {
     local repo="$1"
@@ -53,6 +63,37 @@ convert_gh_format() {
     else
         echo "$repo"
     fi
+}
+
+# Run a hook if it exists
+run_hook() {
+    local hook_name="$1"
+    local worktree_dir="$2"
+    local root_dir="$3"
+    
+    local hook_file="$root_dir/.worktree/$hook_name"
+    
+    # Check if hook exists and is executable
+    if [[ -f "$hook_file" && -x "$hook_file" ]]; then
+        info "Running $hook_name hook..."
+        
+        # Export environment variables for the hook
+        export WT_ROOT_DIRECTORY="$root_dir"
+        export WT_DIRECTORY="$worktree_dir"
+        export WT_BRANCH="$(basename "$worktree_dir")"
+        export WT_BRANCH_SLUG="$(generate_branch_slug "$WT_BRANCH")"
+        
+        # Run the hook in the worktree directory
+        (cd "$worktree_dir" && "$hook_file") || {
+            warning "Hook $hook_name failed (exit code: $?)"
+            return 1
+        }
+        
+        success "Hook $hook_name completed"
+        return 0
+    fi
+    
+    return 0
 }
 
 # Init command: Clone or create a bare repository
@@ -147,7 +188,7 @@ cmd_init() {
 
     # Create worktree for default branch using our create command
     # We need to be in the right directory for this
-    export WT_ROOT="$PWD"
+    export WT_ROOT_DIRECTORY="$PWD"
     git --git-dir="$bare_dir" worktree add "$default_branch" "$default_branch" 2>/dev/null || \
         git --git-dir="$bare_dir" worktree add "$default_branch" -b "$default_branch" "origin/$default_branch" 2>/dev/null || \
         git --git-dir="$bare_dir" worktree add "$default_branch" -b "$default_branch"
@@ -159,7 +200,7 @@ cmd_init() {
     fi
 
     # Process templates if they exist
-    if [[ -d ".wt-templates" ]]; then
+    if [[ -d ".worktree/templates" ]]; then
         info "Processing templates..."
         process_templates "$default_branch" "$default_branch" "$PWD"
     fi
@@ -183,7 +224,7 @@ process_templates() {
     local branch_name="$2"
     local root_dir="$3"
 
-    local templates_dir="$root_dir/.wt-templates"
+    local templates_dir="$root_dir/.worktree/templates"
 
     if [[ ! -d "$templates_dir" ]]; then
         return 0
@@ -204,7 +245,9 @@ process_templates() {
         local content=$(cat "$template_file")
 
         # Replace variables
+        local branch_slug=$(generate_branch_slug "$branch_name")
         content="${content//\$\{WT_BRANCH\}/$branch_name}"
+        content="${content//\$\{WT_BRANCH_SLUG\}/$branch_slug}"
         content="${content//\$\{WT_DIRECTORY\}/$worktree_dir}"
         content="${content//\$\{WT_ROOT_DIRECTORY\}/$root_dir}"
 
@@ -306,8 +349,14 @@ cmd_create() {
         (cd "$worktree_dir" && git submodule update --init --recursive)
     fi
 
+    # Determine the branch name for templates and hooks
+    local branch_for_templates="${new_branch:-$branch_name}"
+
     # Process templates
-    process_templates "$worktree_dir" "$new_branch" "$root_dir"
+    process_templates "$worktree_dir" "$branch_for_templates" "$root_dir"
+
+    # Run post-create hook
+    run_hook "post-create" "$worktree_dir" "$root_dir"
 
     success "Worktree created successfully!"
     info "Location: $worktree_dir"
@@ -385,6 +434,9 @@ cmd_delete() {
     fi
 
     info "Deleting worktree: $branch_name"
+
+    # Run post-delete hook before removing the worktree
+    run_hook "post-delete" "$worktree_dir" "$root_dir"
 
     # Remove worktree
     git --git-dir="$bare_dir" worktree remove "$worktree_dir" ${force:+--force}
@@ -473,17 +525,42 @@ COMMANDS:
       Show this help message
 
 TEMPLATE SUPPORT:
-  Create a .wt-templates directory in your repository root to define
+  Create a .worktree/templates directory in your repository root to define
   template files that will be copied to each new worktree.
 
   Available variables:
     \${WT_BRANCH}           - The branch name
+    \${WT_BRANCH_SLUG}      - URL-safe branch name (lowercase, alphanumeric + hyphens)
     \${WT_DIRECTORY}        - The worktree directory path
     \${WT_ROOT_DIRECTORY}   - The repository root directory
 
-  Example .wt-templates/.env:
-    APP_URL=\${WT_BRANCH}.myapp.test
+  Example .worktree/templates/.env:
+    APP_URL=\${WT_BRANCH_SLUG}.myapp.test
     APP_NAME=\${WT_BRANCH}
+    DATABASE_NAME=myapp_\${WT_BRANCH_SLUG}
+
+HOOK SUPPORT:
+  Create executable scripts in the .worktree directory to run custom
+  logic during worktree lifecycle events.
+
+  Available hooks:
+    post-create   - Runs after a worktree is created
+    post-delete   - Runs before a worktree is deleted
+
+  Environment variables available to hooks:
+    WT_ROOT_DIRECTORY - Repository root directory
+    WT_DIRECTORY      - Worktree directory path
+    WT_BRANCH         - Branch name
+    WT_BRANCH_SLUG    - URL-safe branch name
+
+  Example .worktree/post-create:
+    #!/usr/bin/env bash
+    echo "Setting up worktree for branch: \$WT_BRANCH"
+    npm install
+    cp .env.example .env
+
+  Make hooks executable:
+    chmod +x .worktree/post-create
 
 EOF
 }

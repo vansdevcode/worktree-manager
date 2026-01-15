@@ -76,7 +76,7 @@ gh wt init myorg/newproject --new
 2. Clones the repository (or creates a new one with `--new`)
 3. Automatically creates a worktree for the default branch
 4. Initializes submodules if present
-5. Applies templates if `.wt-templates/` exists
+5. Applies templates if `.worktree/templates/` exists
 
 ### `gh wt create`
 
@@ -167,10 +167,10 @@ One of the most powerful features of `gh-wt` is template support. Templates allo
 
 ### Setting Up Templates
 
-Create a `.wt-templates/` directory in your repository root:
+Create a `.worktree/templates/` directory in your repository root:
 
 ```bash
-mkdir .wt-templates
+mkdir -p .worktree/templates
 ```
 
 Any files you place in this directory will be copied to new worktrees with variable replacement.
@@ -178,32 +178,49 @@ Any files you place in this directory will be copied to new worktrees with varia
 ### Available Variables
 
 - `${WT_BRANCH}` - The branch name of the worktree
+- `${WT_BRANCH_SLUG}` - URL-safe version of the branch name (lowercase, alphanumeric + hyphens only)
 - `${WT_DIRECTORY}` - The absolute path to the worktree directory
 - `${WT_ROOT_DIRECTORY}` - The absolute path to the repository root (where `.bare` is located)
 
+**Slug Transformation Rules:**
+
+The `WT_BRANCH_SLUG` variable transforms branch names to be URL-safe:
+- Converts to lowercase
+- Replaces `/` and `_` with `-`
+- Replaces any non-alphanumeric characters (except `-`) with `-`
+- Collapses multiple consecutive hyphens into one
+- Trims leading and trailing hyphens
+
+**Examples:**
+- `feature/user-auth` → `feature-user-auth`
+- `Feature/User-Auth` → `feature-user-auth`
+- `fix_bug_123` → `fix-bug-123`
+- `hot-fix/v2.0.1` → `hot-fix-v2-0-1`
+
 ### Example Templates
 
-**`.wt-templates/.env`**
+**`.worktree/templates/.env`**
 ```bash
-APP_URL=${WT_BRANCH}.myapp.test
+APP_URL=${WT_BRANCH_SLUG}.myapp.test
 APP_NAME=${WT_BRANCH}
 APP_ENV=local
-DATABASE_NAME=myapp_${WT_BRANCH}
+DATABASE_NAME=myapp_${WT_BRANCH_SLUG}
 ```
 
-**`.wt-templates/docker-compose.override.yml`**
+**`.worktree/templates/docker-compose.override.yml`**
 ```yaml
 version: '3.8'
 services:
   app:
-    container_name: myapp_${WT_BRANCH}
+    container_name: myapp_${WT_BRANCH_SLUG}
     ports:
       - "8000:8000"
     environment:
       - BRANCH=${WT_BRANCH}
+      - BRANCH_SLUG=${WT_BRANCH_SLUG}
 ```
 
-**`.wt-templates/.vscode/settings.json`**
+**`.worktree/templates/.vscode/settings.json`**
 ```json
 {
   "terminal.integrated.cwd": "${WT_DIRECTORY}",
@@ -213,10 +230,10 @@ services:
 
 ### Directory Structure in Templates
 
-You can create subdirectories in `.wt-templates/` and they'll be preserved:
+You can create subdirectories in `.worktree/templates/` and they'll be preserved:
 
 ```
-.wt-templates/
+.worktree/templates/
 ├── .env
 ├── .vscode/
 │   └── settings.json
@@ -225,6 +242,190 @@ You can create subdirectories in `.wt-templates/` and they'll be preserved:
 ```
 
 All of these will be copied to each new worktree with variables replaced.
+
+## Hook Support
+
+Hooks allow you to run custom scripts during worktree lifecycle events, similar to Git hooks. This is useful for automating setup and cleanup tasks.
+
+### Setting Up Hooks
+
+Create a `.worktree/` directory in your repository root:
+
+```bash
+mkdir .worktree
+```
+
+Add executable scripts with specific hook names in this directory.
+
+### Available Hooks
+
+- **`post-create`** - Runs after a worktree is created
+- **`post-delete`** - Runs before a worktree is deleted
+
+### Environment Variables
+
+Hooks have access to these environment variables:
+
+- `WT_ROOT_DIRECTORY` - Repository root directory (where `.bare` is located)
+- `WT_DIRECTORY` - Worktree directory path
+- `WT_BRANCH` - Branch name
+- `WT_BRANCH_SLUG` - URL-safe branch name (lowercase, alphanumeric + hyphens)
+
+### Example Hooks
+
+**`.worktree/post-create`**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "Setting up worktree for branch: $WT_BRANCH"
+echo "URL-safe slug: $WT_BRANCH_SLUG"
+
+# Install dependencies
+npm install
+
+# Copy environment file
+if [ -f .env.example ]; then
+    cp .env.example .env
+    echo "Created .env from .env.example"
+fi
+
+# Set up database with URL-safe name
+echo "Creating database: myapp_$WT_BRANCH_SLUG"
+mysql -e "CREATE DATABASE IF NOT EXISTS myapp_$WT_BRANCH_SLUG"
+
+echo "Setup complete!"
+echo "Access your app at: https://$WT_BRANCH_SLUG.myapp.test"
+```
+
+**`.worktree/post-delete`**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "Cleaning up worktree: $WT_BRANCH"
+
+# Drop database
+echo "Dropping database: myapp_$WT_BRANCH_SLUG"
+mysql -e "DROP DATABASE IF EXISTS myapp_$WT_BRANCH_SLUG"
+
+# Clean up any temporary files
+rm -rf /tmp/myapp_$WT_BRANCH_SLUG
+
+echo "Cleanup complete!"
+```
+
+### Making Hooks Executable
+
+After creating hook scripts, make them executable:
+
+```bash
+chmod +x .worktree/post-create
+chmod +x .worktree/post-delete
+```
+
+### Hook Execution
+
+- Hooks run in the worktree directory (not the root)
+- If a hook fails (non-zero exit code), a warning is displayed but the operation continues
+- Hooks are optional - if they don't exist or aren't executable, they're simply skipped
+
+### Hook Examples: Manual File Copying
+
+Hooks can manually copy and process files, giving you full control over the setup process.
+
+#### Approach 1: Simple Copy
+
+Copy files directly without variable substitution:
+
+**`.worktree/post-create`**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "Copying configuration files for: $WT_BRANCH"
+
+# Copy environment file
+cp "$WT_ROOT_DIRECTORY/config/template.env" .env
+
+# Copy other config files
+cp "$WT_ROOT_DIRECTORY/config/database.yml" config/
+
+echo "Files copied successfully!"
+```
+
+#### Approach 2: Copy with envsubst
+
+Use `envsubst` to substitute environment variables in copied files:
+
+**`.worktree/post-create`**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "Processing templates for: $WT_BRANCH"
+
+# Copy and substitute variables using envsubst
+envsubst < "$WT_ROOT_DIRECTORY/config/template.env" > .env
+
+# Verify variables were substituted
+echo "Created .env with:"
+echo "  - Branch: $WT_BRANCH"
+echo "  - Directory: $WT_DIRECTORY"
+
+echo "Template processing complete!"
+```
+
+#### Approach 3: Copy with Bash Variable Replacement
+
+Use bash string manipulation for custom substitution logic:
+
+**`.worktree/post-create`**
+```bash
+#!/usr/bin/env bash
+set -e
+
+echo "Generating configuration for: $WT_BRANCH"
+
+# Read template
+template=$(cat "$WT_ROOT_DIRECTORY/config/template.env")
+
+# Replace variables manually
+template="${template//\$\{WT_BRANCH\}/$WT_BRANCH}"
+template="${template//\$\{WT_DIRECTORY\}/$WT_DIRECTORY}"
+template="${template//\$\{WT_ROOT_DIRECTORY\}/$WT_ROOT_DIRECTORY}"
+
+# Add dynamic content
+random_port=$((8000 + RANDOM % 1000))
+template="${template//\$\{PORT\}/$random_port}"
+
+# Write output
+echo "$template" > .env
+
+echo "Configuration generated with random port: $random_port"
+```
+
+**When to use each approach:**
+- **Simple copy**: Static files, no variables needed
+- **envsubst**: Standard variable substitution, simple templates
+- **Bash replacement**: Complex logic, conditional substitution, dynamic values
+
+### Combining Hooks with Templates
+
+Hooks and templates work great together:
+
+1. **Templates** set up static configuration files
+2. **Hooks** perform dynamic setup tasks
+
+Example workflow:
+
+```bash
+# Templates create .env files
+.worktree/templates/.env
+
+# Hooks install dependencies and set up services
+.worktree/post-create
+```
 
 ## Typical Workflow
 
@@ -236,9 +437,9 @@ gh wt init myorg/myrepo
 
 # 2. Set up templates (one-time)
 cd myrepo
-mkdir -p .wt-templates
-echo 'APP_URL=${WT_BRANCH}.myapp.test' > .wt-templates/.env
-git add .wt-templates
+mkdir -p .worktree/templates
+echo 'APP_URL=${WT_BRANCH_SLUG}.myapp.test' > .worktree/templates/.env
+git add .worktree
 git commit -m "Add worktree templates"
 git push
 
@@ -278,7 +479,7 @@ gh wt create main refactor-payment-module
 
 Work inside the worktree directories, not in the root. The root directory should only contain:
 - `.bare/` - The bare repository
-- `.wt-templates/` - Template files
+- `.worktree/` - Hooks and template files
 - `main/` (or your default branch)
 - Other worktree directories
 
@@ -315,10 +516,13 @@ After running `gh wt init`, your repository structure will look like this:
 ```
 myrepo/
 ├── .bare/              # Bare repository (your .git folder)
-├── .wt-templates/      # Template files (optional)
-│   ├── .env
-│   └── config/
-│       └── local.yml
+├── .worktree/          # Hooks and templates (optional)
+│   ├── templates/      # Template files
+│   │   ├── .env
+│   │   └── config/
+│   │       └── local.yml
+│   ├── post-create     # Hook: runs after worktree creation
+│   └── post-delete     # Hook: runs before worktree deletion
 ├── main/               # Default branch worktree
 │   ├── .git            # Points to ../.bare
 │   └── ... your code ...
