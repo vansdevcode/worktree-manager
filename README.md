@@ -80,15 +80,20 @@ gh wt init myorg/newproject --new
 
 ### `gh wt create`
 
-Create a new worktree from a base branch.
+Create a new worktree from a base branch or pull request.
 
 ```bash
 gh wt create <base-branch> <new-branch-name>
+# OR
+gh wt create pr/<number> [custom-name]
 ```
 
 **Arguments:**
 - `base-branch` - Branch, tag, or commit to base from (e.g., `main`, `origin/develop`, `v1.0.0`)
 - `new-branch-name` - Name for the new branch and directory
+- `pr/<number>` - Pull request number to checkout (creates directory `pr-<number>`)
+- `pr/<number>/custom-name` - Pull request with custom directory name
+- `pr/<number> new-branch` - Create new branch from PR's code
 
 **Examples:**
 
@@ -104,6 +109,15 @@ gh wt create v1.0.0 hotfix-security
 
 # Create from a specific commit
 gh wt create a1b2c3d experiment
+
+# Checkout a pull request (creates directory pr-123 with branch from PR)
+gh wt create pr/123
+
+# Checkout PR with custom directory name
+gh wt create pr/123/review
+
+# Create new branch based on a PR's code
+gh wt create pr/123 my-modifications
 ```
 
 **What it does:**
@@ -112,6 +126,23 @@ gh wt create a1b2c3d experiment
 3. Initializes submodules automatically
 4. Processes and copies template files with variable replacement
 5. Ready to start working immediately
+
+**Pull Request Support:**
+
+`gh-wt` has first-class support for working with GitHub pull requests:
+
+- **Quick PR checkout**: Use `pr/123` syntax to checkout any pull request
+- **Custom naming**: Add a custom directory name with `pr/123/my-name`
+- **Branch from PRs**: Create new branches based on PR code with `pr/123 new-branch-name`
+
+The extension automatically:
+- Fetches the PR's branch information using GitHub CLI
+- Pulls the latest code from the PR's head branch
+- Sets up the worktree just like any other branch
+
+**Requirements for PR support:**
+- GitHub CLI (`gh`) must be installed and authenticated
+- You must have read access to the repository and PR
 
 ### `gh wt delete`
 

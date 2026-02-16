@@ -55,6 +55,27 @@ generate_branch_slug() {
         sed 's/-$//'
 }
 
+# Fetch PR information and return the head ref (branch name)
+get_pr_branch() {
+    local pr_number="$1"
+    local bare_dir="$2"
+    
+    # Check if gh CLI is available
+    if ! command -v gh &> /dev/null; then
+        error "gh CLI is required for PR support. Install from https://cli.github.com/"
+    fi
+    
+    # Get PR head ref using gh CLI
+    # We need to run this from within the repository context
+    local head_ref=$(git --git-dir="$bare_dir" remote get-url origin | sed 's/.*://;s/\.git$//' | xargs -I {} gh pr view "$pr_number" --repo {} --json headRefName --jq '.headRefName' 2>/dev/null)
+    
+    if [[ -z "$head_ref" ]]; then
+        error "Could not fetch PR #$pr_number. Make sure the PR exists and you have access to it."
+    fi
+    
+    echo "$head_ref"
+}
+
 # Convert org/repo format to git@github.com:org/repo.git
 convert_gh_format() {
     local repo="$1"
@@ -70,29 +91,29 @@ run_hook() {
     local hook_name="$1"
     local worktree_dir="$2"
     local root_dir="$3"
-    
-    local hook_file="$root_dir/.worktree/$hook_name"
-    
+
+    local hook_file="$root_dir/.worktree/hooks/$hook_name"
+
     # Check if hook exists and is executable
     if [[ -f "$hook_file" && -x "$hook_file" ]]; then
         info "Running $hook_name hook..."
-        
+
         # Export environment variables for the hook
         export WT_ROOT_DIRECTORY="$root_dir"
         export WT_DIRECTORY="$worktree_dir"
         export WT_BRANCH="$(basename "$worktree_dir")"
         export WT_BRANCH_SLUG="$(generate_branch_slug "$WT_BRANCH")"
-        
-        # Run the hook in the worktree directory
+
+        # Run the hook preserving the current environment
         (cd "$worktree_dir" && "$hook_file") || {
             warning "Hook $hook_name failed (exit code: $?)"
             return 1
         }
-        
+
         success "Hook $hook_name completed"
         return 0
     fi
-    
+
     return 0
 }
 
@@ -275,6 +296,38 @@ cmd_create() {
     fi
 
     local bare_dir="$root_dir/.bare"
+    
+    # Check if base_branch is a PR reference (pr/NUMBER or pr/NUMBER/CUSTOM-NAME)
+    if [[ "$base_branch" =~ ^pr/([0-9]+)(/(.+))?$ ]]; then
+        local pr_number="${BASH_REMATCH[1]}"
+        local custom_name="${BASH_REMATCH[3]}"
+        
+        info "Fetching PR #$pr_number information..."
+        
+        # Fetch the PR branch name
+        local pr_branch=$(get_pr_branch "$pr_number" "$bare_dir")
+        
+        info "PR #$pr_number uses branch: $pr_branch"
+        
+        # Fetch the PR branch from remote
+        git --git-dir="$bare_dir" fetch origin "$pr_branch:$pr_branch" 2>/dev/null || \
+            git --git-dir="$bare_dir" fetch origin "$pr_branch" 2>/dev/null || true
+        
+        # Determine the worktree name
+        if [[ -n "$custom_name" ]]; then
+            # User provided custom name: pr/123/my-feature -> my-feature
+            base_branch="$pr_branch"
+            new_branch="$custom_name"
+        elif [[ -n "$new_branch" ]]; then
+            # Two args provided: pr/123 feature-branch -> create new branch from PR
+            base_branch="$pr_branch"
+            # new_branch already set
+        else
+            # Single arg: pr/123 -> checkout PR branch as pr-123
+            base_branch="$pr_branch"
+            new_branch="pr-$pr_number"
+        fi
+    fi
 
     # Determine if we're adding an existing branch or creating a new one
     if [[ -z "$new_branch" ]]; then
@@ -503,6 +556,9 @@ COMMANDS:
         gh wt create main feature-123         # Create new branch from main
         gh wt create origin/develop fix-456   # Create new branch from remote
         gh wt create v1.0.0 hotfix-security   # Create new branch from tag
+        gh wt create pr/123                   # Create branch 'pr-123' from PR #123
+        gh wt create pr/456/my-changes        # Create branch 'my-changes' from PR #456
+        gh wt create pr/789 new-branch        # Create branch 'new-branch' from PR #789
 
   delete <branch-name> [--force]
       Delete a worktree and its branch
