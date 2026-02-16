@@ -297,7 +297,7 @@ One of the most powerful features of `gh-wtm` is **Go template support**. Templa
 Create a `.worktree/files/` directory in your repository root:
 
 ```bash
-mkdir -p .worktree/files
+mkdir -p .worktree/files/
 ```
 
 Files in this directory are handled based on their extension:
