@@ -1,0 +1,75 @@
+# mise configuration for gh-wtm
+# https://mise.jdx.dev/
+
+[tools]
+go = "1.25" # Go version for building the CLI
+
+[tasks.build]
+description = "Build the wtm binary"
+run = "go build -v -o wtm ./cmd/wtm"
+
+[tasks.test]
+description = "Run unit tests with coverage"
+run = "go test -v -coverprofile=coverage.out -covermode=atomic ./..."
+
+[tasks.coverage]
+description = "View test coverage report"
+depends = ["test"]
+run = "go tool cover -func=coverage.out"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = ["rm -f wtm", "rm -f coverage.out"]
+
+[tasks.install]
+description = "Install as GitHub CLI extension and standalone 'wtm' command"
+depends = ["build"]
+run = [
+  "mkdir -p ~/.local/bin",
+  "cp wtm ~/.local/bin/wtm",
+  "chmod +x ~/.local/bin/wtm",
+  "mkdir -p ~/.local/share/gh-wtm",
+  "ln -sf ~/.local/bin/wtm ~/.local/share/gh-wtm/gh-wtm",
+  "cd ~/.local/share/gh-wtm && gh extension install .",
+  "echo '✓ Installed as gh extension: gh wtm'",
+  "echo '✓ Installed standalone: wtm (ensure ~/.local/bin is in PATH)'",
+]
+
+[tasks.uninstall]
+description = "Uninstall both gh extension and standalone command"
+run = [
+  "gh extension remove gh-wtm || echo 'gh extension not installed'",
+  "rm -rf ~/.local/share/gh-wtm",
+  "rm -f ~/.local/bin/wtm",
+  "echo '✓ Uninstalled gh extension (if it was installed)'",
+  "echo '✓ Removed standalone wtm command'",
+]
+
+[tasks.lint]
+description = "Run Go linter (golangci-lint)"
+run = "golangci-lint run ./..."
+
+[tasks.fmt]
+description = "Format Go code"
+run = "go fmt ./..."
+
+[tasks.vet]
+description = "Run Go vet"
+run = "go vet ./..."
+
+[tasks.tidy]
+description = "Tidy Go modules"
+run = "go mod tidy"
+
+[tasks.check]
+description = "Run all checks (fmt, vet, lint, test)"
+depends = ["fmt", "vet", "lint", "test"]
+
+[tasks.dev]
+description = "Build and run the CLI"
+run = ["go build -o wtm ./cmd/wtm", "./wtm --help"]
+
+[tasks.help]
+description = "Show available tasks"
+alias = "h"
+run = "mise tasks"

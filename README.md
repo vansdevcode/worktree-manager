@@ -1,6 +1,8 @@
-# gh-wt
+# Worktree Manager
 
-A GitHub CLI extension for managing Git worktrees with ease.
+A powerful CLI tool for managing Git worktrees with ease. Use it standalone as `wtm` or as a GitHub CLI extension `gh wtm`.
+
+**Now written in Go** for better performance, type safety, and cross-platform support!
 
 ## What are Git Worktrees?
 
@@ -11,179 +13,245 @@ Git worktrees allow you to have multiple working directories for a single reposi
 - Run tests on one branch while developing on another
 - Review PRs without disrupting your current work
 
-`gh-wt` makes working with worktrees simple and intuitive, with added features like templates and safety checks.
+`wtm` makes working with worktrees simple and intuitive, with added features like templates and safety checks.
 
 ## Installation
 
+### Recommended: Using install.sh
+
+The recommended installation method uses the provided `install.sh` script:
+
 ```bash
-gh extension install vansdevcode/gh-wt
+# Download and run the installer
+curl -fsSL https://raw.githubusercontent.com/vansdevcode/worktree-manager/main/install.sh | bash
+
+# Or clone and run locally
+git clone https://github.com/vansdevcode/worktree-manager.git
+cd worktree-manager
+./install.sh
+```
+
+This installs:
+
+- **`wtm`** - Standalone command in `~/.local/bin` (works independently)
+- **`gh wtm`** - GitHub CLI extension (if you have `gh` installed)
+
+The installer automatically downloads the latest release and sets up both commands correctly.
+
+### Manual Installation / Development
+
+For development or manual installation with `mise`:
+
+```bash
+git clone https://github.com/vansdevcode/worktree-manager.git
+cd worktree-manager
+mise run install
+```
+
+### Alternative: Direct GitHub Extension Install
+
+Installing directly from GitHub will use the repository name:
+
+```bash
+# This installs as 'gh worktree-manager' (not 'gh wtm')
+gh extension install vansdevcode/worktree-manager
+```
+
+**Tip:** Use the `install.sh` script instead to get the correct `gh wtm` command name.
+
+**Note:** Ensure `~/.local/bin` is in your `$PATH` for the standalone `wtm` command:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
 ```
 
 ## Quick Start
 
 ```bash
 # Initialize a repository for worktree management
-gh wt init myorg/myrepo
+wtm init myorg/myrepo
 
-# Create a new worktree for a feature
+# Add a new worktree for a feature
 cd myrepo
-gh wt create main feature-awesome-thing
+wtm add main feature-awesome-thing
 
 # Work in your new worktree
 cd feature-awesome-thing
 # ... make changes ...
 
 # List all worktrees
-gh wt list
+wtm ls
 
-# Delete a worktree when done
-gh wt delete feature-awesome-thing
+# Remove a worktree when done
+wtm rm feature-awesome-thing
 ```
+
+**Note:** All commands can also be used with `gh wtm` if you prefer the GitHub CLI extension.
 
 ## Commands
 
-### `gh wt init`
+All commands can be run with `wtm` (standalone) or `gh wtm` (GitHub CLI extension). Examples below use `wtm`.
+
+### `wtm init`
 
 Initialize a new worktree-managed repository.
 
 ```bash
-gh wt init <repo> [dir] [--new]
+wtm init <repo> [dir] [--new] [--no-hooks]
 ```
 
 **Arguments:**
+
 - `repo` - Repository in format `org/repo` or full git URL
 - `dir` - Directory name (optional, defaults to repo name)
 - `--new` - Create a new repository instead of cloning
+- `--no-hooks` - Skip running the post-create hook
 
 **Examples:**
 
 ```bash
 # Clone an existing repository
-gh wt init myorg/myrepo
+wtm init myorg/myrepo
 
 # Clone with custom directory name
-gh wt init myorg/myrepo my-project
+wtm init myorg/myrepo my-project
 
 # Clone using full git URL
-gh wt init git@github.com:myorg/myrepo.git
+wtm init git@github.com:myorg/myrepo.git
 
 # Create a new repository
-gh wt init myorg/newproject --new
+wtm init myorg/newproject --new
 ```
 
 **What it does:**
+
 1. Creates a directory structure with a bare repository in `.bare/`
 2. Clones the repository (or creates a new one with `--new`)
 3. Automatically creates a worktree for the default branch
 4. Initializes submodules if present
-5. Applies templates if `.worktree/templates/` exists
+5. Processes files from `.worktree/files/` if it exists
 
-### `gh wt create`
+### `wtm add`
 
-Create a new worktree from a base branch or pull request.
+Add a new worktree from a base branch or pull request.
 
 ```bash
-gh wt create <base-branch> <new-branch-name>
+wtm add <base-branch> [new-branch] [directory] [--no-hooks]
 # OR
-gh wt create pr/<number> [custom-name]
+wtm add pr/<number> [custom-name] [--no-hooks]
 ```
 
 **Arguments:**
+
 - `base-branch` - Branch, tag, or commit to base from (e.g., `main`, `origin/develop`, `v1.0.0`)
-- `new-branch-name` - Name for the new branch and directory
+- `new-branch` - Name for the new branch (optional, uses base branch if omitted)
+- `directory` - Custom directory name (optional, defaults to branch slug)
 - `pr/<number>` - Pull request number to checkout (creates directory `pr-<number>`)
-- `pr/<number>/custom-name` - Pull request with custom directory name
-- `pr/<number> new-branch` - Create new branch from PR's code
+- `pr/<number>/<custom-name>` - Pull request with custom directory name
+- `--no-hooks` - Skip running the post-create hook
 
 **Examples:**
 
 ```bash
-# Create from main branch
-gh wt create main feature-123
+# Add worktree from main branch (creates new branch)
+wtm add main feature-123
 
-# Create from remote branch
-gh wt create origin/develop fix-bug-456
+# Add worktree with custom directory
+wtm add main feature-123 my-custom-dir
 
-# Create from a tag
-gh wt create v1.0.0 hotfix-security
+# Add existing remote branch
+wtm add origin/develop
 
-# Create from a specific commit
-gh wt create a1b2c3d experiment
+# Add from a tag
+wtm add v1.0.0 hotfix-security
+
+# Add from a specific commit
+wtm add a1b2c3d experiment
 
 # Checkout a pull request (creates directory pr-123 with branch from PR)
-gh wt create pr/123
+wtm add pr/123
 
 # Checkout PR with custom directory name
-gh wt create pr/123/review
+wtm add pr/123/review
 
-# Create new branch based on a PR's code
-gh wt create pr/123 my-modifications
+# Skip hooks when adding
+wtm add main feature-456 --no-hooks
 ```
 
 **What it does:**
-1. Creates a new branch from the specified base
-2. Creates a new directory with the branch name
+
+1. Creates a new branch from the specified base (or checks out existing branch)
+2. Creates a new directory (defaults to branch slug if not specified)
 3. Initializes submodules automatically
-4. Processes and copies template files with variable replacement
-5. Ready to start working immediately
+4. Processes files from `.worktree/files/` (templates with `.tmpl` extension are processed, others copied as-is)
+5. Runs post-create hook (unless `--no-hooks` is used)
+6. Ready to start working immediately
 
 **Pull Request Support:**
 
-`gh-wt` has first-class support for working with GitHub pull requests:
+`wtm` has first-class support for working with GitHub pull requests with a **three-tier fallback system**:
 
 - **Quick PR checkout**: Use `pr/123` syntax to checkout any pull request
 - **Custom naming**: Add a custom directory name with `pr/123/my-name`
-- **Branch from PRs**: Create new branches based on PR code with `pr/123 new-branch-name`
+- **Works without gh CLI**: Falls back to git refspec if GitHub CLI is unavailable
 
-The extension automatically:
-- Fetches the PR's branch information using GitHub CLI
-- Pulls the latest code from the PR's head branch
-- Sets up the worktree just like any other branch
+The extension automatically tries these methods in order:
 
-**Requirements for PR support:**
-- GitHub CLI (`gh`) must be installed and authenticated
-- You must have read access to the repository and PR
+1. **GitHub CLI** (`gh`) - Fetches PR metadata including title and description
+2. **GitHub API** - Uses git credentials for API access (future enhancement)
+3. **Git refspec** - Direct `git fetch origin pull/$ID/head` (always works, no auth needed)
 
-### `gh wt delete`
+This means PR support works even without `gh` CLI installed!
 
-Delete a worktree and its branch.
+### `wtm rm`
+
+Remove a worktree and optionally its branch.
 
 ```bash
-gh wt delete [branch-name] [--force]
+wtm rm [branch-name] [--force] [--delete-branch] [--no-hooks]
 ```
 
 **Arguments:**
-- `branch-name` - Name of the branch/worktree to delete (optional, uses current directory if not specified)
-- `--force`, `-f` - Force deletion even with uncommitted changes
+
+- `branch-name` - Name of the branch/worktree to remove (optional, uses current directory if not specified)
+- `--force`, `-f` - Force removal even with uncommitted changes
+- `--delete-branch`, `-d` - Also delete the git branch after removing worktree
+- `--no-hooks` - Skip running the post-delete hook
 
 **Examples:**
 
 ```bash
-# Delete a specific worktree
-gh wt delete feature-123
+# Remove a specific worktree
+wtm rm feature-123
 
-# Force delete with uncommitted changes
-gh wt delete old-branch --force
+# Force remove with uncommitted changes
+wtm rm old-branch --force
 
-# Delete current worktree (when inside a worktree directory)
-gh wt delete
+# Remove worktree and delete the branch
+wtm rm feature-123 --delete-branch
+
+# Remove without running hooks
+wtm rm feature-123 --no-hooks
 ```
 
 **Safety features:**
+
 - Checks for uncommitted changes
 - Warns about untracked files
-- Prevents deleting worktree you're currently in
-- Prompts for confirmation when there are untracked files
+- Prevents removing worktree you're currently in
+- Runs post-delete hook before removal (unless `--no-hooks` is used)
+- Use `--force` to bypass safety checks
 
-### `gh wt list`
+### `wtm ls`
 
 List all worktrees in the current repository.
 
 ```bash
-gh wt list
+wtm ls
 ```
 
 **Example output:**
+
 ```
 Worktrees in /Users/you/projects/myrepo:
 
@@ -192,91 +260,125 @@ Worktrees in /Users/you/projects/myrepo:
 /Users/you/projects/myrepo/feature-123     d4e5f6g [feature-123]
 ```
 
+### `wtm pr`
+
+Convenience shorthand for adding a pull request worktree.
+
+```bash
+wtm pr <number> [directory]
+```
+
+**Arguments:**
+
+- `number` - Pull request number
+- `directory` - Optional custom directory name
+
+**Examples:**
+
+```bash
+# Quick PR checkout (creates pr-123 directory)
+wtm pr 123
+
+# PR with custom directory
+wtm pr 123 review-fixes
+```
+
+This is equivalent to `wtm add pr/<number>` but shorter for quick PR checkouts.
+
 ## Template Support
 
-One of the most powerful features of `gh-wt` is template support. Templates allow you to automatically set up configuration files for each worktree.
+One of the most powerful features of `wtm` is **Go template support**. Templates allow you to automatically set up configuration files for each worktree with dynamic variable replacement.
 
 ### Setting Up Templates
 
-Create a `.worktree/templates/` directory in your repository root:
+Create a `.worktree/files/` directory in your repository root:
 
 ```bash
-mkdir -p .worktree/templates
+mkdir -p .worktree/files/
 ```
 
-Any files you place in this directory will be copied to new worktrees with variable replacement.
+Files in this directory are handled based on their extension:
+
+- **Files ending with `.tmpl`**: Processed as Go templates with variable replacement, then saved without the `.tmpl` extension
+- **Files without `.tmpl`**: Copied as-is without any processing (safe for SQL files, scripts with `{{` syntax, etc.)
+
+This allows you to mix template files and regular files in the same directory safely.
 
 ### Available Variables
 
-- `${WT_BRANCH}` - The branch name of the worktree
-- `${WT_BRANCH_SLUG}` - URL-safe version of the branch name (lowercase, alphanumeric + hyphens only)
-- `${WT_DIRECTORY}` - The absolute path to the worktree directory
-- `${WT_ROOT_DIRECTORY}` - The absolute path to the repository root (where `.bare` is located)
+Template files (ending with `.tmpl`) use Go template syntax with these context variables:
 
-**Slug Transformation Rules:**
-
-The `WT_BRANCH_SLUG` variable transforms branch names to be URL-safe:
-- Converts to lowercase
-- Replaces `/` and `_` with `-`
-- Replaces any non-alphanumeric characters (except `-`) with `-`
-- Collapses multiple consecutive hyphens into one
-- Trims leading and trailing hyphens
-
-**Examples:**
-- `feature/user-auth` → `feature-user-auth`
-- `Feature/User-Auth` → `feature-user-auth`
-- `fix_bug_123` → `fix-bug-123`
-- `hot-fix/v2.0.1` → `hot-fix-v2-0-1`
+- `{{ .Branch }}` - The branch name of the worktree
+- `{{ .Directory }}` - The absolute path to the worktree directory
+- `{{ .RootDirectory }}` - The absolute path to the repository root (where `.bare` is located)
 
 ### Example Templates
 
-**`.worktree/templates/.env`**
+**`.worktree/files/.env.tmpl`** (processed as template, saved as `.env`)
+
 ```bash
-APP_URL=${WT_BRANCH_SLUG}.myapp.test
-APP_NAME=${WT_BRANCH}
+APP_URL={{ .Branch }}.myapp.test
+APP_NAME={{ .Branch }}
 APP_ENV=local
-DATABASE_NAME=myapp_${WT_BRANCH_SLUG}
+DATABASE_NAME=myapp_{{ .Branch }}
 ```
 
-**`.worktree/templates/docker-compose.override.yml`**
-```yaml
-version: '3.8'
-services:
-  app:
-    container_name: myapp_${WT_BRANCH_SLUG}
-    ports:
-      - "8000:8000"
-    environment:
-      - BRANCH=${WT_BRANCH}
-      - BRANCH_SLUG=${WT_BRANCH_SLUG}
-```
+**`.worktree/files/config.json.tmpl`** (processed as template, saved as `config.json`)
 
-**`.worktree/templates/.vscode/settings.json`**
 ```json
 {
-  "terminal.integrated.cwd": "${WT_DIRECTORY}",
-  "git.defaultBranchName": "${WT_BRANCH}"
+  "branch": "{{ .Branch }}",
+  "directory": "{{ .Directory }}",
+  "rootDirectory": "{{ .RootDirectory }}"
 }
 ```
 
-### Directory Structure in Templates
+**`.worktree/files/.vscode/settings.json.tmpl`** (processed as template, saved as `.vscode/settings.json`)
 
-You can create subdirectories in `.worktree/templates/` and they'll be preserved:
+```json
+{
+  "terminal.integrated.cwd": "{{ .Directory }}",
+  "git.defaultBranchName": "{{ .Branch }}"
+}
+```
+
+**`.worktree/files/init.sql`** (copied as-is, NOT processed)
+
+```sql
+-- This file contains {{ }} syntax and will be copied without processing
+CREATE TABLE users (
+  id INT PRIMARY KEY,
+  data JSONB DEFAULT '{{}}'::jsonb
+);
+```
+
+### Directory Structure in Files
+
+You can create subdirectories in `.worktree/files/` and they'll be preserved:
 
 ```
-.worktree/templates/
-├── .env
+.worktree/files/
+├── .env.tmpl              # Processed as template → .env
+├── config.json.tmpl       # Processed as template → config.json
+├── init.sql               # Copied as-is (safe for {{ }} syntax)
+├── setup.sh               # Copied as-is
 ├── .vscode/
-│   └── settings.json
+│   └── settings.json.tmpl # Processed as template → .vscode/settings.json
 └── config/
-    └── local.yml
+    └── local.yml.tmpl     # Processed as template → config/local.yml
 ```
 
-All of these will be copied to each new worktree with variables replaced.
+Files with `.tmpl` extension are processed and saved without the extension. Other files are copied as-is.
 
 ## Hook Support
 
 Hooks allow you to run custom scripts during worktree lifecycle events, similar to Git hooks. This is useful for automating setup and cleanup tasks.
+
+> **📝 Templates vs Hooks:**
+>
+> - **Template files** (`.worktree/files/*.tmpl`) use **Go template syntax** (`{{ .Branch }}`, `{{ .Directory }}`, etc.) and are processed when copying files
+> - **Hooks** (`.worktree/post-create`, `.worktree/post-delete`) are **executable scripts** that use **environment variables** (`$WT_BRANCH`, `$WT_DIRECTORY`, etc.)
+> - Template files create static configuration files, hooks run dynamic code for setup tasks
 
 ### Setting Up Hooks
 
@@ -300,17 +402,20 @@ Hooks have access to these environment variables:
 - `WT_ROOT_DIRECTORY` - Repository root directory (where `.bare` is located)
 - `WT_DIRECTORY` - Worktree directory path
 - `WT_BRANCH` - Branch name
-- `WT_BRANCH_SLUG` - URL-safe branch name (lowercase, alphanumeric + hyphens)
 
 ### Example Hooks
 
 **`.worktree/post-create`**
+
 ```bash
 #!/usr/bin/env bash
 set -e
 
 echo "Setting up worktree for branch: $WT_BRANCH"
-echo "URL-safe slug: $WT_BRANCH_SLUG"
+
+# Create URL-safe slug from branch name (replace / with -)
+SLUG=$(echo "$WT_BRANCH" | sed 's/\//-/g')
+echo "URL-safe slug: $SLUG"
 
 # Install dependencies
 npm install
@@ -322,26 +427,30 @@ if [ -f .env.example ]; then
 fi
 
 # Set up database with URL-safe name
-echo "Creating database: myapp_$WT_BRANCH_SLUG"
-mysql -e "CREATE DATABASE IF NOT EXISTS myapp_$WT_BRANCH_SLUG"
+echo "Creating database: myapp_$SLUG"
+mysql -e "CREATE DATABASE IF NOT EXISTS myapp_$SLUG"
 
 echo "Setup complete!"
-echo "Access your app at: https://$WT_BRANCH_SLUG.myapp.test"
+echo "Access your app at: https://$SLUG.myapp.test"
 ```
 
 **`.worktree/post-delete`**
+
 ```bash
 #!/usr/bin/env bash
 set -e
 
 echo "Cleaning up worktree: $WT_BRANCH"
 
+# Create URL-safe slug from branch name (replace / with -)
+SLUG=$(echo "$WT_BRANCH" | sed 's/\//-/g')
+
 # Drop database
-echo "Dropping database: myapp_$WT_BRANCH_SLUG"
-mysql -e "DROP DATABASE IF EXISTS myapp_$WT_BRANCH_SLUG"
+echo "Dropping database: myapp_$SLUG"
+mysql -e "DROP DATABASE IF EXISTS myapp_$SLUG"
 
 # Clean up any temporary files
-rm -rf /tmp/myapp_$WT_BRANCH_SLUG
+rm -rf /tmp/myapp_$SLUG
 
 echo "Cleanup complete!"
 ```
@@ -370,6 +479,7 @@ Hooks can manually copy and process files, giving you full control over the setu
 Copy files directly without variable substitution:
 
 **`.worktree/post-create`**
+
 ```bash
 #!/usr/bin/env bash
 set -e
@@ -390,6 +500,7 @@ echo "Files copied successfully!"
 Use `envsubst` to substitute environment variables in copied files:
 
 **`.worktree/post-create`**
+
 ```bash
 #!/usr/bin/env bash
 set -e
@@ -412,6 +523,7 @@ echo "Template processing complete!"
 Use bash string manipulation for custom substitution logic:
 
 **`.worktree/post-create`**
+
 ```bash
 #!/usr/bin/env bash
 set -e
@@ -437,22 +549,28 @@ echo "Configuration generated with random port: $random_port"
 ```
 
 **When to use each approach:**
+
 - **Simple copy**: Static files, no variables needed
 - **envsubst**: Standard variable substitution, simple templates
 - **Bash replacement**: Complex logic, conditional substitution, dynamic values
 
-### Combining Hooks with Templates
+### Combining Hooks with Template Files
 
-Hooks and templates work great together:
+Hooks and template files work great together:
 
-1. **Templates** set up static configuration files
-2. **Hooks** perform dynamic setup tasks
+1. **Template files** (`.tmpl`) set up static configuration files
+2. **Regular files** are copied as-is
+3. **Hooks** perform dynamic setup tasks
 
 Example workflow:
 
 ```bash
-# Templates create .env files
-.worktree/templates/.env
+# Template files create configuration
+.worktree/files/.env.tmpl → .env
+.worktree/files/config.json.tmpl → config.json
+
+# Regular files are copied as-is
+.worktree/files/init.sql → init.sql
 
 # Hooks install dependencies and set up services
 .worktree/post-create
@@ -460,24 +578,25 @@ Example workflow:
 
 ## Typical Workflow
 
-Here's a typical development workflow using `gh-wt`:
+Here's a typical development workflow using `wtm`:
 
 ```bash
 # 1. Initialize your repository once
-gh wt init myorg/myrepo
+wtm init myorg/myrepo
 
-# 2. Set up templates (one-time)
+# 2. Set up template files (one-time)
 cd myrepo
-mkdir -p .worktree/templates
-echo 'APP_URL=${WT_BRANCH_SLUG}.myapp.test' > .worktree/templates/.env
+mkdir -p .worktree/files
+echo 'APP_URL={{ .Branch }}.myapp.test' > .worktree/files/.env.tmpl
+echo 'DATABASE_NAME=myapp_{{ .Branch }}' >> .worktree/files/.env.tmpl
 git add .worktree
-git commit -m "Add worktree templates"
+git commit -m "Add worktree template files"
 git push
 
 # 3. Create worktrees for each feature/fix
-gh wt create main feature-user-auth
-gh wt create main feature-payment
-gh wt create main fix-login-bug
+wtm add main feature-user-auth
+wtm add main feature-payment
+wtm add main fix-login-bug
 
 # 4. Work on each feature independently
 cd feature-user-auth
@@ -487,11 +606,11 @@ cd ../feature-payment
 # ... develop, commit, push ...
 
 # 5. List what you're working on
-gh wt list
+wtm ls
 
 # 6. Clean up when done
-gh wt delete feature-user-auth
-gh wt delete feature-payment
+wtm rm feature-user-auth
+wtm rm feature-payment
 ```
 
 ## Tips & Best Practices
@@ -501,27 +620,34 @@ gh wt delete feature-payment
 Since the branch name becomes the directory name, use clear, descriptive names:
 
 ```bash
-gh wt create main feature-user-authentication
-gh wt create main fix-memory-leak-in-parser
-gh wt create main refactor-payment-module
+wtm add main feature-user-authentication
+wtm add main fix-memory-leak-in-parser
+wtm add main refactor-payment-module
 ```
 
 ### 2. Keep the Root Clean
 
 Work inside the worktree directories, not in the root. The root directory should only contain:
+
 - `.bare/` - The bare repository
 - `.worktree/` - Hooks and template files
 - `main/` (or your default branch)
 - Other worktree directories
 
-### 3. Template Everything
+### 3. Use Template Files for Configuration
 
-Use templates for:
-- Environment files (`.env`)
-- Docker configurations
-- IDE settings
+Use `.tmpl` files for configuration that needs branch-specific values:
+
+- Environment files (`.env.tmpl`)
+- Configuration files (`.json.tmpl`, `.yml.tmpl`)
+- IDE settings (`.vscode/settings.json.tmpl`)
 - Database connection strings
-- Local configuration files
+
+Use regular files (without `.tmpl`) for:
+
+- SQL files with `{{` syntax
+- Shell scripts
+- Static configuration files
 
 ### 4. Regular Cleanup
 
@@ -529,11 +655,11 @@ Delete worktrees you're no longer using:
 
 ```bash
 # List to see what you have
-gh wt list
+wtm ls
 
 # Clean up old branches
-gh wt delete old-feature-1
-gh wt delete old-feature-2
+wtm rm old-feature-1
+wtm rm old-feature-2
 ```
 
 ### 5. Submodules Work Automatically
@@ -542,16 +668,17 @@ If your repository has submodules, they're automatically initialized in each wor
 
 ## Repository Structure
 
-After running `gh wt init`, your repository structure will look like this:
+After running `wtm init`, your repository structure will look like this:
 
 ```
 myrepo/
 ├── .bare/              # Bare repository (your .git folder)
-├── .worktree/          # Hooks and templates (optional)
-│   ├── templates/      # Template files
-│   │   ├── .env
+├── .worktree/          # Hooks and template files (optional)
+│   ├── files/          # Files to copy/process for each worktree
+│   │   ├── .env.tmpl   # Template file (processed → .env)
+│   │   ├── init.sql    # Regular file (copied as-is)
 │   │   └── config/
-│   │       └── local.yml
+│   │       └── local.yml.tmpl  # Template file (processed → local.yml)
 │   ├── post-create     # Hook: runs after worktree creation
 │   └── post-delete     # Hook: runs before worktree deletion
 ├── main/               # Default branch worktree
@@ -559,11 +686,13 @@ myrepo/
 │   └── ... your code ...
 ├── feature-123/        # Feature branch worktree
 │   ├── .git            # Points to ../.bare
-│   ├── .env            # Generated from template
+│   ├── .env            # Generated from .env.tmpl
+│   ├── init.sql        # Copied from files/
 │   └── ... your code ...
 └── fix-bug-456/        # Bug fix worktree
     ├── .git            # Points to ../.bare
-    ├── .env            # Generated from template
+    ├── .env            # Generated from .env.tmpl
+    ├── init.sql        # Copied from files/
     └── ... your code ...
 ```
 
@@ -571,7 +700,7 @@ myrepo/
 
 ### "Not in a worktree-managed repository"
 
-Make sure you've initialized the repository with `gh wt init` and you're in the repository root or one of its worktree directories.
+Make sure you've initialized the repository with `wtm init` and you're in the repository root or one of its worktree directories.
 
 ### Worktree Already Exists
 
@@ -579,13 +708,13 @@ If you get an error that a worktree already exists, you can:
 
 ```bash
 # List existing worktrees
-gh wt list
+wtm ls
 
 # Delete the existing one
-gh wt delete existing-branch-name
+wtm rm existing-branch-name
 
 # Or use a different branch name
-gh wt create main feature-123-v2
+wtm add main feature-123-v2
 ```
 
 ### Uncommitted Changes on Delete
@@ -598,14 +727,79 @@ cd feature-branch
 git stash
 
 # Or force delete
-gh wt delete feature-branch --force
+wtm rm feature-branch --force
 ```
 
 ## Requirements
 
-- [GitHub CLI](https://cli.github.com/) (`gh`) installed
 - Git 2.5+ (for worktree support)
-- macOS (Linux support coming soon)
+- [GitHub CLI](https://cli.github.com/) (`gh`) - optional, only needed for PR metadata via `wtm pr`
+
+## Development
+
+This project uses [mise](https://mise.jdx.dev/) for task automation and tool management.
+
+### Setup
+
+```bash
+# Install mise if you haven't already
+# See: https://mise.jdx.dev/getting-started.html
+
+# Clone the repository
+git clone https://github.com/vansdevcode/worktree-manager.git
+cd worktree-manager
+
+# Trust the mise configuration
+mise trust
+
+# mise will automatically install the required Go version
+# based on .mise.toml configuration
+```
+
+### Available Tasks
+
+```bash
+# Build the binary
+mise run build
+
+# Run tests
+mise run test
+
+# Run tests with coverage
+mise run test-coverage
+
+# Clean build artifacts
+mise run clean
+
+# Install as gh extension (for testing)
+mise run install
+
+# Format Go code
+mise run fmt
+
+# Run linter
+mise run lint
+```
+
+### Required Tools
+
+Tools are automatically managed by mise (defined in `.mise.toml`):
+
+- **Go 1.22+** - Auto-installed by mise
+- **Git 2.5+** - Required for worktree support (must be installed separately)
+
+### Running Tests
+
+```bash
+# Run all unit tests
+mise run test
+
+# Run with coverage report
+mise run test-coverage
+
+# Build and test
+mise run clean && mise run build && mise run test
+```
 
 ## Contributing
 

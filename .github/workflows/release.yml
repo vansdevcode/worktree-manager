@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25'
+          
+      - name: Run tests
+        run: go test -v ./...
+        
+      - name: Build binaries
+        run: |
+          # Build for multiple platforms
+          GOOS=linux GOARCH=amd64 go build -o wtm_linux_amd64 ./cmd/wtm
+          GOOS=linux GOARCH=arm64 go build -o wtm_linux_arm64 ./cmd/wtm
+          GOOS=darwin GOARCH=amd64 go build -o wtm_darwin_amd64 ./cmd/wtm
+          GOOS=darwin GOARCH=arm64 go build -o wtm_darwin_arm64 ./cmd/wtm
+          GOOS=windows GOARCH=amd64 go build -o wtm_windows_amd64.exe ./cmd/wtm
+          
+      - name: Generate checksums
+        run: |
+          # Generate SHA256 checksums for all binaries
+          sha256sum wtm_linux_amd64 > checksums.txt
+          sha256sum wtm_linux_arm64 >> checksums.txt
+          sha256sum wtm_darwin_amd64 >> checksums.txt
+          sha256sum wtm_darwin_arm64 >> checksums.txt
+          sha256sum wtm_windows_amd64.exe >> checksums.txt
+          
+          # Display checksums for verification
+          echo "Generated checksums:"
+          cat checksums.txt
+          
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            wtm_linux_amd64
+            wtm_linux_arm64
+            wtm_darwin_amd64
+            wtm_darwin_arm64
+            wtm_windows_amd64.exe
+            checksums.txt
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
