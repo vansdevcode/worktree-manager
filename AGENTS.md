@@ -118,7 +118,7 @@ func runCommandName(cmd *cobra.Command, args []string) error {
 
 **internal/hook/hook.go:**
 - Hooks are executable scripts (any language)
-- Set environment variables: `WT_BRANCH`, `WT_BRANCH_SLUG`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
+- Set environment variables: `WT_BRANCH`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
 - Execute with working directory = worktree directory
 
 ## Testing
@@ -193,7 +193,7 @@ Located in `internal/hook/hook.go`:
 - Hooks: `.worktree/post-create`, `.worktree/post-delete`
 - Must be executable (`chmod +x`)
 - Any language (Bash, Python, etc.)
-- Environment variables set: `WT_BRANCH`, `WT_BRANCH_SLUG`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
+- Environment variables set: `WT_BRANCH`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
 
 ### 4. Safety Checks
 
