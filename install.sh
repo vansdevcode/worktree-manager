@@ -224,6 +224,31 @@ install_gh_extension() {
     fi
 }
 
+# Prompt for yes/no with fallback for non-interactive mode
+prompt_yes_no() {
+    local prompt="$1"
+    local default="${2:-Y}"  # Default to Y if not specified
+    
+    # Check if stdin is a terminal
+    if [ -t 0 ]; then
+        read -p "$(echo -e ${BLUE}?${NC}) $prompt " -n 1 -r
+        echo
+        if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+            return 0
+        else
+            return 1
+        fi
+    else
+        # Non-interactive mode: use default
+        info "$prompt [non-interactive: using default: $default]"
+        if [[ $default =~ ^[Yy]$ ]]; then
+            return 0
+        else
+            return 1
+        fi
+    fi
+}
+
 # Main installation flow
 main() {
     echo ""
@@ -237,23 +262,35 @@ main() {
     echo "  2. GitHub CLI extension: gh wtm"
     echo ""
     
+    # Support environment variables for non-interactive installation
+    # INSTALL_WTM=yes|no - install standalone binary
+    # INSTALL_GH_WTM=yes|no - install gh extension
+    
     detect_platform
     get_latest_version
     
     # Ask about standalone installation
     echo ""
-    read -p "$(echo -e ${BLUE}?${NC}) Install standalone 'wtm' command? [Y/n] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+    local install_standalone="${INSTALL_WTM:-}"
+    if [ -n "$install_standalone" ]; then
+        info "Using INSTALL_WTM=$install_standalone (from environment)"
+        if [[ $install_standalone =~ ^[Yy]|[Yy][Ee][Ss]$ ]]; then
+            install_standalone
+        fi
+    elif prompt_yes_no "Install standalone 'wtm' command? [Y/n]"; then
         install_standalone
     fi
     
     # Check for gh CLI
     if command -v gh >/dev/null 2>&1; then
         echo ""
-        read -p "$(echo -e ${BLUE}?${NC}) Install as GitHub CLI extension 'gh wtm'? [Y/n] " -n 1 -r
-        echo
-        if [[ $REPLY =~ ^[Yy]$ ]] || [[ -z $REPLY ]]; then
+        local install_gh="${INSTALL_GH_WTM:-}"
+        if [ -n "$install_gh" ]; then
+            info "Using INSTALL_GH_WTM=$install_gh (from environment)"
+            if [[ $install_gh =~ ^[Yy]|[Yy][Ee][Ss]$ ]]; then
+                install_gh_extension
+            fi
+        elif prompt_yes_no "Install as GitHub CLI extension 'gh wtm'? [Y/n]"; then
             install_gh_extension
         fi
     else
