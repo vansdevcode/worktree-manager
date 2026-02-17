@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-# Get database name from environment variable
-DB_NAME="myapp_$(echo "$WT_BRANCH" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')"
+# Get database name from template variable
+DB_NAME="myapp_{{ .Branch | strings.SnakeCase }}"
 
 echo "🗑️  Deleting database: $DB_NAME"
 mysql -uroot -e "DROP DATABASE IF EXISTS \`$DB_NAME\`;" 2>/dev/null || {
@@ -10,6 +10,6 @@ mysql -uroot -e "DROP DATABASE IF EXISTS \`$DB_NAME\`;" 2>/dev/null || {
 }
 
 echo "🔗 Unlinking from Laravel Herd..."
-cd "$WT_DIRECTORY" && herd unlink 2>/dev/null || true
+cd "{{ .Directory }}" && herd unlink 2>/dev/null || true
 
 echo "✅ Worktree cleanup complete!"

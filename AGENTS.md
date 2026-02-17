@@ -117,9 +117,14 @@ func runCommandName(cmd *cobra.Command, args []string) error {
 - Preserve file permissions when copying
 
 **internal/hook/hook.go:**
-- Hooks are executable scripts (any language)
-- Set environment variables: `WT_BRANCH`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
+- Hooks are executable scripts processed as Go templates (any language)
+- Use normal shebangs (`#!/bin/bash`, `#!/usr/bin/env python3`)
+- Template variables: `.Branch`, `.Directory`, `.RootDirectory`
+- Full gomplate function support (strings.Slug, strings.SnakeCase, etc.)
+- All hooks are passed through Go templates before execution
+- No environment variables — use template variables instead
 - Execute with working directory = worktree directory
+- Hooks live in `.worktree/hooks/` directory
 
 ## Testing
 
@@ -222,10 +227,12 @@ Located in `internal/template/template.go`:
 
 Located in `internal/hook/hook.go`:
 
-- Hooks: `.worktree/post-create`, `.worktree/post-delete`
+- Hooks: `.worktree/hooks/post-create`, `.worktree/hooks/post-delete`
 - Must be executable (`chmod +x`)
-- Any language (Bash, Python, etc.)
-- Environment variables set: `WT_BRANCH`, `WT_DIRECTORY`, `WT_ROOT_DIRECTORY`
+- Use normal shebangs (`#!/bin/bash`, `#!/usr/bin/env python3`)
+- All hooks are processed as Go templates before execution
+- Template variables: `{{ .Branch }}`, `{{ .Directory }}`, `{{ .RootDirectory }}`
+- Full gomplate function support (e.g., `{{ .Branch | strings.Slug }}`)
 
 ### 4. Safety Checks
 

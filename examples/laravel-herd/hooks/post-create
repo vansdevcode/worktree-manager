@@ -1,8 +1,9 @@
 #!/bin/bash
 set -e
 
-# Get database name from environment variable provided by `wtm`
-DB_NAME="myapp_$(echo "$WT_BRANCH" | sed 's/[^a-zA-Z0-9]/_/g' | tr '[:upper:]' '[:lower:]')"
+# Get database name from template variable
+DB_NAME="myapp_{{ .Branch | strings.SnakeCase }}"
+APP_URL="myapp_{{ .Branch | strings.Slug }}"
 
 echo "🗄️  Cloning database: myapp_db_base → $DB_NAME"
 mysql -uroot -e "CREATE DATABASE IF NOT EXISTS \`$DB_NAME\`;" 2>/dev/null || true
@@ -22,5 +23,5 @@ echo "🔗 Linking to Laravel Herd..."
 herd link
 
 echo "✅ Worktree setup complete!"
-echo "🌐 App URL: http://$(echo "$WT_BRANCH" | sed 's/[^a-zA-Z0-9-]/-/g' | sed 's/--*/-/g' | tr '[:upper:]' '[:lower:]').myapp.test"
+echo "🌐 App URL: http://$APP_URL.myapp.test"
 echo "🗄️  Database: $DB_NAME"

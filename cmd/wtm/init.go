@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/vansdevcode/worktree-manager/internal/config"
 	"github.com/vansdevcode/worktree-manager/internal/git"
 	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/template"
@@ -130,17 +129,9 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Run post-create hook
 	if !initNoHooks {
-		hookPath := config.GetHookPath(directory, "post-create")
-		if _, err := os.Stat(hookPath); err == nil {
-			ui.Info("Running post-create hook...")
-			hookData := hook.HookData{
-				RootDirectory: directory,
-				Directory:     worktreePath,
-				Branch:        defaultBranch,
-			}
-			if err := hook.RunHook(hookPath, hookData); err != nil {
-				ui.Warning("Post-create hook failed: %v", err)
-			}
+		ui.Info("Running post-create hook...")
+		if err := hook.RunHookByName(directory, "post-create", defaultBranch, worktreePath); err != nil {
+			ui.Warning("Post-create hook failed: %v", err)
 		}
 	}
 

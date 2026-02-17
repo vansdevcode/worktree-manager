@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Edit(**)",
+      "MultiEdit(**)",
+      "Write(**)",
+      "Grep(**)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Glob(**)",
+      "LS(**)",
+      "WebSearch(**)",
+      "Bash(git add:*)",
+      "Bash(git mv:*)",
+      "Bash(git stash:*)",
+      "Bash(git diff:*)",
+      "Bash(git commit:*)",
+      "Bash(ls:*)",
+      "Bash(tree:*)",
+      "Bash(pwd:*)",
+      "Bash(which:*)",
+      "mcp__ide__getDiagnostics",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_console_messages",
+      "mcp__playwright__browser_evaluate",
+      "mcp__playwright__browser_close",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_click",
+      "Bash(find:*)",
+      "Bash(go build:*)",
+      "Bash(go test:*)",
+      "Bash(chmod:*)",
+      "Bash(mise r lint:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

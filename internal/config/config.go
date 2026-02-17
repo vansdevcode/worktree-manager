@@ -56,5 +56,5 @@ func GetFilesDir(rootDir string) string {
 
 // GetHookPath returns the path to a hook script
 func GetHookPath(rootDir, hookName string) string {
-	return filepath.Join(rootDir, ".worktree", hookName)
+	return filepath.Join(rootDir, ".worktree", "hooks", hookName)
 }

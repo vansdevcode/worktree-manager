@@ -111,17 +111,9 @@ func runRm(cmd *cobra.Command, args []string) error {
 
 	// Run post-delete hook before removal
 	if !rmNoHooks && branchName != "" {
-		hookPath := config.GetHookPath(rootDir, "post-delete")
-		if _, err := os.Stat(hookPath); err == nil {
-			ui.Info("Running post-delete hook...")
-			hookData := hook.HookData{
-				RootDirectory: rootDir,
-				Directory:     worktreePath,
-				Branch:        branchName,
-			}
-			if err := hook.RunHook(hookPath, hookData); err != nil {
-				ui.Warning("Post-delete hook failed: %v", err)
-			}
+		ui.Info("Running post-delete hook...")
+		if err := hook.RunHookByName(rootDir, "post-delete", branchName, worktreePath); err != nil {
+			ui.Warning("Post-delete hook failed: %v", err)
 		}
 	}
 

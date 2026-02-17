@@ -374,11 +374,7 @@ Files with `.tmpl` extension are processed and saved without the extension. Othe
 
 Hooks allow you to run custom scripts during worktree lifecycle events, similar to Git hooks. This is useful for automating setup and cleanup tasks.
 
-> **📝 Templates vs Hooks:**
->
-> - **Template files** (`.worktree/files/*.tmpl`) use **Go template syntax** (`{{ .Branch }}`, `{{ .Directory }}`, etc.) and are processed when copying files
-> - **Hooks** (`.worktree/post-create`, `.worktree/post-delete`) are **executable scripts** that use **environment variables** (`$WT_BRANCH`, `$WT_DIRECTORY`, etc.)
-> - Template files create static configuration files, hooks run dynamic code for setup tasks
+**Hooks now support Go templates!** You can use the same template syntax and functions (including `gomplate`) in your hooks as you do in template files.
 
 ### Setting Up Hooks
 
@@ -388,33 +384,48 @@ Create a `.worktree/` directory in your repository root:
 mkdir .worktree
 ```
 
-Add executable scripts with specific hook names in this directory.
+Add scripts with specific hook names in this directory and start with the special shebang:
+
+```bash
+#!/usr/bin/env -S wtm hook
+```
+
+This shebang tells `wtm` to process the script as a Go template before executing it.
 
 ### Available Hooks
 
 - **`post-create`** - Runs after a worktree is created
 - **`post-delete`** - Runs before a worktree is deleted
 
-### Environment Variables
+### Available Template Variables
 
-Hooks have access to these environment variables:
+Hooks have access to the same Go template variables as template files:
 
-- `WT_ROOT_DIRECTORY` - Repository root directory (where `.bare` is located)
-- `WT_DIRECTORY` - Worktree directory path
-- `WT_BRANCH` - Branch name
+- `{{ .Branch }}` - The branch name of the worktree
+- `{{ .Directory }}` - Absolute path to the worktree directory
+- `{{ .RootDirectory }}` - Absolute path to the repository root (where `.bare` is located)
+
+### Available Template Functions
+
+Hooks have access to all [gomplate functions](https://docs.gomplate.ca/functions/), including:
+
+- `{{ .Branch | strings.Slug }}` - Convert branch name to URL-friendly slug
+- `{{ .Branch | strings.ReplaceAll "/" "-" }}` - Replace characters in strings
+- `{{ env.Getenv "HOME" }}` - Access environment variables
+- And many more...
 
 ### Example Hooks
 
 **`.worktree/post-create`**
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env -S wtm hook
 set -e
 
-echo "Setting up worktree for branch: $WT_BRANCH"
+echo "Setting up worktree for branch: {{ .Branch }}"
 
-# Create URL-safe slug from branch name (replace / with -)
-SLUG=$(echo "$WT_BRANCH" | sed 's/\//-/g')
+# Use gomplate's strings.Slug for URL-safe slug (much easier than sed!)
+SLUG="{{ .Branch | strings.Slug }}"
 echo "URL-safe slug: $SLUG"
 
 # Install dependencies
@@ -437,13 +448,13 @@ echo "Access your app at: https://$SLUG.myapp.test"
 **`.worktree/post-delete`**
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env -S wtm hook
 set -e
 
-echo "Cleaning up worktree: $WT_BRANCH"
+echo "Cleaning up worktree: {{ .Branch }}"
 
-# Create URL-safe slug from branch name (replace / with -)
-SLUG=$(echo "$WT_BRANCH" | sed 's/\//-/g')
+# Use gomplate's strings.Slug for URL-safe slug
+SLUG="{{ .Branch | strings.Slug }}"
 
 # Drop database
 echo "Dropping database: myapp_$SLUG"
@@ -464,117 +475,110 @@ chmod +x .worktree/post-create
 chmod +x .worktree/post-delete
 ```
 
+### Making Hooks Executable
+
+After creating hook scripts, make them executable:
+
+```bash
+chmod +x .worktree/post-create
+chmod +x .worktree/post-delete
+```
+
 ### Hook Execution
 
+- Hooks must start with `#!/usr/bin/env -S wtm hook` shebang
 - Hooks run in the worktree directory (not the root)
 - If a hook fails (non-zero exit code), a warning is displayed but the operation continues
 - Hooks are optional - if they don't exist or aren't executable, they're simply skipped
+- The template is processed first, then the resulting script is executed
 
-### Hook Examples: Manual File Copying
+### More Hook Examples
 
-Hooks can manually copy and process files, giving you full control over the setup process.
+**Python hook with dynamic setup:**
 
-#### Approach 1: Simple Copy
+```python
+#!/usr/bin/env -S wtm hook
+import os
+import subprocess
 
-Copy files directly without variable substitution:
+branch = "{{ .Branch }}"
+slug = "{{ .Branch | strings.Slug }}"
+directory = "{{ .Directory }}"
 
-**`.worktree/post-create`**
+print(f"Setting up Python environment for {branch}")
 
-```bash
-#!/usr/bin/env bash
-set -e
+# Create virtual environment
+subprocess.run(["python3", "-m", "venv", ".venv"])
 
-echo "Copying configuration files for: $WT_BRANCH"
+# Install dependencies
+subprocess.run([".venv/bin/pip", "install", "-r", "requirements.txt"])
 
-# Copy environment file
-cp "$WT_ROOT_DIRECTORY/config/template.env" .env
+# Create config file
+config = f"""
+[database]
+name = myapp_{slug}
+host = localhost
 
-# Copy other config files
-cp "$WT_ROOT_DIRECTORY/config/database.yml" config/
+[server]
+port = 8000
+"""
 
-echo "Files copied successfully!"
+with open("config.ini", "w") as f:
+    f.write(config)
+
+print(f"Setup complete! Database: myapp_{slug}")
 ```
 
-#### Approach 2: Copy with envsubst
-
-Use `envsubst` to substitute environment variables in copied files:
-
-**`.worktree/post-create`**
+**Advanced bash hook with conditionals:**
 
 ```bash
-#!/usr/bin/env bash
+#!/usr/bin/env -S wtm hook
 set -e
 
-echo "Processing templates for: $WT_BRANCH"
+BRANCH="{{ .Branch }}"
+SLUG="{{ .Branch | strings.Slug }}"
+IS_FEATURE="{{ .Branch | strings.HasPrefix "feature/" }}"
 
-# Copy and substitute variables using envsubst
-envsubst < "$WT_ROOT_DIRECTORY/config/template.env" > .env
+echo "Setting up $BRANCH"
 
-# Verify variables were substituted
-echo "Created .env with:"
-echo "  - Branch: $WT_BRANCH"
-echo "  - Directory: $WT_DIRECTORY"
+# Install dependencies
+npm install
 
-echo "Template processing complete!"
+# Feature branches get a test database
+if [ "$IS_FEATURE" = "true" ]; then
+    echo "Creating test database for feature branch"
+    mysql -e "CREATE DATABASE IF NOT EXISTS test_${SLUG}"
+else
+    echo "Creating production database"
+    mysql -e "CREATE DATABASE IF NOT EXISTS ${SLUG}"
+fi
+
+echo "Setup complete!"
 ```
-
-#### Approach 3: Copy with Bash Variable Replacement
-
-Use bash string manipulation for custom substitution logic:
-
-**`.worktree/post-create`**
-
-```bash
-#!/usr/bin/env bash
-set -e
-
-echo "Generating configuration for: $WT_BRANCH"
-
-# Read template
-template=$(cat "$WT_ROOT_DIRECTORY/config/template.env")
-
-# Replace variables manually
-template="${template//\$\{WT_BRANCH\}/$WT_BRANCH}"
-template="${template//\$\{WT_DIRECTORY\}/$WT_DIRECTORY}"
-template="${template//\$\{WT_ROOT_DIRECTORY\}/$WT_ROOT_DIRECTORY}"
-
-# Add dynamic content
-random_port=$((8000 + RANDOM % 1000))
-template="${template//\$\{PORT\}/$random_port}"
-
-# Write output
-echo "$template" > .env
-
-echo "Configuration generated with random port: $random_port"
-```
-
-**When to use each approach:**
-
-- **Simple copy**: Static files, no variables needed
-- **envsubst**: Standard variable substitution, simple templates
-- **Bash replacement**: Complex logic, conditional substitution, dynamic values
 
 ### Combining Hooks with Template Files
 
 Hooks and template files work great together:
 
-1. **Template files** (`.tmpl`) set up static configuration files
-2. **Regular files** are copied as-is
-3. **Hooks** perform dynamic setup tasks
+1. **Template files** (`.worktree/files/*.tmpl`) set up static configuration files with Go templates
+2. **Regular files** (`.worktree/files/*`) are copied as-is
+3. **Hooks** (`.worktree/post-create`, `.worktree/post-delete`) perform dynamic setup tasks with Go templates
 
 Example workflow:
 
 ```bash
-# Template files create configuration
+# Template files create configuration (processed on copy)
 .worktree/files/.env.tmpl → .env
 .worktree/files/config.json.tmpl → config.json
 
 # Regular files are copied as-is
 .worktree/files/init.sql → init.sql
 
-# Hooks install dependencies and set up services
-.worktree/post-create
+# Hooks install dependencies and set up services (processed on execution)
+.worktree/post-create (with #!/usr/bin/env -S wtm hook)
 ```
+
+Both template files and hooks now use the same Go template syntax and gomplate functions!
 
 ## Typical Workflow
 
