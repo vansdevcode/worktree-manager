@@ -1,0 +1,148 @@
+{
+  "project": "devtree — Local Development Routing CLI",
+  "description": "devtree is a standalone CLI that provides local development routing for developers working on multiple projects simultaneously. It bundles a DNS server, TLS-terminating reverse proxy, routing table, and a status dashboard into a single tool. Developers register local services (e.g., myapp.test on port 8080), and devtree handles DNS resolution, HTTPS certificates, and reverse proxying automatically. This eliminates the need to remember port numbers, configure /etc/hosts manually, or set up nginx/Caddy per project.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Routing Table YAML State File",
+      "description": "As a developer, I need a persistent routing table so that registered domains and their upstreams survive restarts.",
+      "acceptanceCriteria": [
+        "Routing table stored at ~/.config/devtree/routes.yaml",
+        "YAML schema supports sites map with upstream (string) and meta (map of string to string) per domain",
+        "Load(path) reads and parses the YAML file; returns empty table if file doesn't exist",
+        "Save(path, table) writes atomically (temp file + rename) to prevent corruption",
+        "Unit tests cover CRUD operations, YAML round-trip, and atomic save"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "US-002",
+      "title": "Register a Route via CLI",
+      "description": "As a developer, I want to register a domain-to-port mapping from the command line so that I can expose a local service.",
+      "acceptanceCriteria": [
+        "devtree register \u003cdomain\u003e --port \u003cport\u003e adds an entry to routes.yaml",
+        "Optional --meta key=value flags store arbitrary metadata (e.g., --meta stack=go:1.23)",
+        "If the domain already exists, the entry is updated (not duplicated)",
+        "Upstream is stored as localhost:\u003cport\u003e",
+        "Command prints confirmation: Registered myapp.test -\u003e localhost:8080",
+        "If the daemon is running, sends a reload command via Unix socket"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "US-003",
+      "title": "Unregister a Route via CLI",
+      "description": "As a developer, I want to remove a registered domain so that it stops being routed.",
+      "acceptanceCriteria": [
+        "devtree unregister \u003cdomain\u003e removes the entry from routes.yaml",
+        "If the domain doesn't exist, prints an error message and exits with non-zero code",
+        "Command prints confirmation: Unregistered myapp.test",
+        "If the daemon is running, sends a reload command via Unix socket"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "US-004",
+      "title": "List Registered Routes",
+      "description": "As a developer, I want to see all registered routes so that I know what's currently configured.",
+      "acceptanceCriteria": [
+        "devtree list prints a table with columns: Domain, Upstream, Meta",
+        "If no routes are registered, prints No routes registered",
+        "Output is sorted alphabetically by domain"
+      ],
+      "priority": 1,
+      "passes": true
+    },
+    {
+      "id": "US-005",
+      "title": "Embedded DNS Server",
+      "description": "As a developer, I need .test domains to resolve to 127.0.0.1 automatically so that browsers and CLI tools can reach my local services by name.",
+      "acceptanceCriteria": [
+        "DNS server listens on UDP and TCP port 53 (on 127.0.0.1)",
+        "All A queries for *.test respond with 127.0.0.1",
+        "All other queries respond with NXDOMAIN",
+        "Uses github.com/miekg/dns library",
+        "Unit tests verify resolution using miekg/dns client against a high port"
+      ],
+      "priority": 2,
+      "passes": false
+    },
+    {
+      "id": "US-006",
+      "title": "TLS-Terminating Reverse Proxy",
+      "description": "As a developer, I want HTTPS to work automatically for my .test domains so that I get production-like local development without certificate hassle.",
+      "acceptanceCriteria": [
+        "Reverse proxy listens on ports 80 and 443",
+        "Each registered site gets tls internal (Caddy's built-in local CA) and reverse_proxy to its upstream",
+        "Caddy config is built programmatically via caddy.Load() — no Caddyfile on disk",
+        "Reload(table) rebuilds and hot-reloads config from the current routing table",
+        "Integration test: start proxy on high ports, register a route, verify HTTPS request reaches a test HTTP server"
+      ],
+      "priority": 2,
+      "passes": false
+    },
+    {
+      "id": "US-007",
+      "title": "Daemon Start and Stop",
+      "description": "As a developer, I want to start and stop the devtree daemon so that DNS and proxying run in the background.",
+      "acceptanceCriteria": [
+        "devtree start launches the daemon in the background",
+        "Daemon starts the DNS server and Caddy reverse proxy",
+        "PID file written to ~/.config/devtree/devtree.pid",
+        "If daemon is already running (PID file exists and process alive), print error and exit",
+        "devtree stop reads PID file, sends SIGTERM, removes PID file",
+        "If daemon is not running, devtree stop prints error and exits with non-zero code",
+        "Daemon handles SIGTERM gracefully — stops DNS, stops proxy, removes PID file"
+      ],
+      "priority": 3,
+      "passes": false
+    },
+    {
+      "id": "US-008",
+      "title": "Unix Socket for Hot-Reload",
+      "description": "As a developer, I want route changes to take effect immediately without restarting the daemon.",
+      "acceptanceCriteria": [
+        "Daemon listens on a Unix socket at ~/.config/devtree/devtree.sock",
+        "register and unregister commands send a reload message to the socket after updating YAML",
+        "Daemon receives reload message, re-reads routes.yaml, and calls proxy.Reload()",
+        "If daemon is not running, register/unregister still update YAML (no error)"
+      ],
+      "priority": 3,
+      "passes": false
+    },
+    {
+      "id": "US-009",
+      "title": "Status Dashboard",
+      "description": "As a developer, I want a web dashboard to see all my registered services and their status at a glance.",
+      "acceptanceCriteria": [
+        "Dashboard served at https://dashboard.devtree.test",
+        "Single HTML page embedded via Go embed package — no build tools, no JS framework",
+        "JSON API at https://dashboard.devtree.test/api/status returns routing table and health info",
+        "Dashboard renders: site list with clickable domain links, upstream ports, meta labels, health dots",
+        "Auto-refreshes every 5 seconds via JS fetch",
+        "Health check: basic TCP connect to each upstream; green dot if reachable, red if not"
+      ],
+      "priority": 4,
+      "passes": false
+    },
+    {
+      "id": "US-010",
+      "title": "Bootstrap System Setup",
+      "description": "As a developer, I want a one-time setup command so that my OS is configured to route .test domains through devtree.",
+      "acceptanceCriteria": [
+        "devtree bootstrap detects the current OS",
+        "macOS: creates /etc/resolver/test with nameserver 127.0.0.1 (prompts for sudo)",
+        "macOS: runs caddy trust to install root CA in system trust store",
+        "Linux: configures systemd-resolved or /etc/resolv.conf for .test TLD",
+        "Linux: runs caddy trust",
+        "Prints a summary of what was configured",
+        "After bootstrap + start, ping anything.test resolves to 127.0.0.1"
+      ],
+      "priority": 5,
+      "passes": false
+    }
+  ]
+}
