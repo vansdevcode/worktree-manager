@@ -13,6 +13,7 @@
 - Daemon pattern: hidden `daemon` subcommand runs foreground; `start` launches it detached via `exec.Command` + `Setsid`
 - PID file lifecycle: write on start, check with signal 0, remove on stop/SIGTERM cleanup
 - Platform-specific code uses build tags in separate files (e.g., `daemon_unix.go` with `//go:build !windows`)
+- Unix socket paths limited to ~104 chars on macOS; use `/tmp` for test sockets, not `t.TempDir()`
 
 ## 2026-03-05 - US-001
 - Implemented `internal/routing` package with routing table YAML state file
@@ -106,4 +107,20 @@
   - Platform-specific `SysProcAttr` needs build tags (`//go:build !windows`) in separate file
   - Signal 0 (`proc.Signal(syscall.Signal(0))`) checks if a process exists without sending a real signal
   - Hidden cobra commands (`Hidden: true`) are useful for internal subcommands like `daemon`
+---
+
+## 2026-03-05 - US-008
+- Implemented Unix socket listener in `internal/daemon/daemon.go` for hot-reload
+- Daemon listens on `~/.config/devtree/devtree.sock` and accepts "reload" messages
+- On reload: re-reads `routes.yaml` and calls `proxy.Reload()` to hot-reload Caddy config
+- Socket cleaned up on daemon shutdown (deferred `listener.Close()` + `os.Remove`)
+- `register` and `unregister` commands already send reload via `sendReload()` in `register.go`
+- If daemon is not running, register/unregister still update YAML without error (existing behavior)
+- Added `socketPath` field to `Daemon` struct; updated `New()` signature
+- Files changed: `internal/daemon/daemon.go` (modified), `internal/daemon/daemon_test.go` (modified), `cmd/devtree/daemon.go` (modified)
+- 3 new tests: socket creation, stale socket removal, reload reads routes
+- **Learnings for future iterations:**
+  - Unix socket paths are limited to ~104 chars on macOS; use `/tmp` for test socket paths, not `t.TempDir()`
+  - `proxyServer` may be nil when socket receives reload in tests; add nil check before calling `Reload()`
+  - `bufio.Scanner` with line-based protocol ("reload\n") works well for simple Unix socket commands
 ---

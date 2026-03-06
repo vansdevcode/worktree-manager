@@ -111,7 +111,7 @@
         "If daemon is not running, register/unregister still update YAML (no error)"
       ],
       "priority": 3,
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-009",
