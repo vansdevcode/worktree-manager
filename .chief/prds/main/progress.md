@@ -10,6 +10,9 @@
 - Caddy programmatic config: build JSON as `map[string]any`, marshal, pass to `caddy.Load(data, true)`
 - Import `_ "github.com/caddyserver/caddy/v2/modules/standard"` to register all standard Caddy modules
 - TLS test clients must set `ServerName` in `tls.Config` to match the domain (SNI), not the IP address
+- Daemon pattern: hidden `daemon` subcommand runs foreground; `start` launches it detached via `exec.Command` + `Setsid`
+- PID file lifecycle: write on start, check with signal 0, remove on stop/SIGTERM cleanup
+- Platform-specific code uses build tags in separate files (e.g., `daemon_unix.go` with `//go:build !windows`)
 
 ## 2026-03-05 - US-001
 - Implemented `internal/routing` package with routing table YAML state file
@@ -87,4 +90,20 @@
   - When testing TLS with `http.Client`, must set `tls.Config.ServerName` to match the domain — the URL hostname sets SNI, not the `Host` header
   - Caddy stores its internal CA at `~/Library/Application Support/Caddy/pki/authorities/local/` on macOS; expired CAs cause "tls: internal error"
   - Caddy global instance: only one Caddy runs per process; `caddy.Stop()` stops it; tests share the process
+---
+
+## 2026-03-05 - US-007
+- Implemented `internal/daemon` package with `Daemon` struct managing DNS + proxy lifecycle
+- Functions: `New()`, `Run()` (blocks on SIGTERM/SIGINT), `IsRunning()`, `StopDaemon()`, `DefaultPIDPath()`
+- `devtree start` launches daemon in background via `exec.Command` with `Setsid: true` for process detachment
+- `devtree stop` reads PID file, sends SIGTERM, removes PID file; errors if not running
+- Hidden `devtree daemon` command runs the daemon in foreground (called by `start`)
+- PID file written to `~/.config/devtree/devtree.pid`; daemon cleans up PID file on SIGTERM via deferred `os.Remove`
+- Files changed: `internal/daemon/daemon.go` (new), `internal/daemon/daemon_test.go` (new), `cmd/devtree/start.go` (new), `cmd/devtree/stop.go` (new), `cmd/devtree/daemon.go` (new), `cmd/devtree/daemon_unix.go` (new), `cmd/devtree/root.go` (modified)
+- 5 unit tests: PID file write, IsRunning with no file/stale PID/current process, StopDaemon when not running
+- **Learnings for future iterations:**
+  - Use `Setsid: true` in `SysProcAttr` to detach daemon from parent process session
+  - Platform-specific `SysProcAttr` needs build tags (`//go:build !windows`) in separate file
+  - Signal 0 (`proc.Signal(syscall.Signal(0))`) checks if a process exists without sending a real signal
+  - Hidden cobra commands (`Hidden: true`) are useful for internal subcommands like `daemon`
 ---

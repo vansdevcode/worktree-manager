@@ -98,7 +98,7 @@
         "Daemon handles SIGTERM gracefully — stops DNS, stops proxy, removes PID file"
       ],
       "priority": 3,
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-008",
