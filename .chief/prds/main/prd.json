@@ -142,7 +142,7 @@
         "After bootstrap + start, ping anything.test resolves to 127.0.0.1"
       ],
       "priority": 5,
-      "passes": false
+      "passes": true
     }
   ]
 }

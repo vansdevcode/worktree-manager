@@ -143,3 +143,17 @@
   - `net.DialTimeout("tcp", addr, timeout)` is the simplest health check for TCP services
   - Dashboard route must be added before user routes in Caddy config to avoid domain conflicts
 ---
+
+## 2026-03-05 - US-010
+- Implemented `devtree bootstrap` command for one-time OS setup
+- Bootstrap was already coded in `bootstrap.go`, `bootstrap_darwin.go`, `bootstrap_linux.go` but not registered
+- Added `bootstrapCmd` to root command in `root.go`
+- macOS: creates `/etc/resolver/test` with `nameserver 127.0.0.1` via sudo, runs `caddy trust`
+- Linux: detects systemd-resolved (uses drop-in config) or falls back to `/etc/resolv.conf`, runs `caddy trust`
+- Prints summary of what was configured and next steps
+- Files changed: `cmd/devtree/root.go` (modified), `cmd/devtree/bootstrap.go` (new), `cmd/devtree/bootstrap_darwin.go` (new), `cmd/devtree/bootstrap_linux.go` (new)
+- **Learnings for future iterations:**
+  - Always check `root.go` init() to ensure new commands are registered — missing registration is a common oversight
+  - Platform-specific bootstrap uses build tags (`//go:build darwin`, `//go:build linux`) in separate files
+  - `sudo tee` pattern is useful for writing to privileged paths without running the entire Go process as root
+---
