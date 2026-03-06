@@ -253,6 +253,16 @@ func HasUntrackedFiles(path string) (bool, error) {
 	return len(strings.TrimSpace(string(output))) > 0, nil
 }
 
+// ConfigSet sets a git config value in the given bare directory
+func ConfigSet(bareDir, key, value string) error {
+	cmd := exec.Command("git", "--git-dir="+bareDir, "config", key, value)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git config failed: %s", string(output))
+	}
+	return nil
+}
+
 // FetchRef fetches a specific ref from origin
 func FetchRef(bareDir, ref string) error {
 	cmd := exec.Command("git", "--git-dir="+bareDir, "fetch", "origin", ref)

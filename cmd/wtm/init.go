@@ -97,6 +97,17 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err := git.CloneBare(repoURL, bareDir); err != nil {
 			return fmt.Errorf("failed to clone repository: %w", err)
 		}
+
+		// Enable fetch for the bare repository
+		if err := git.ConfigSet(bareDir, "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
+			return fmt.Errorf("failed to configure remote.origin.fetch: %w", err)
+		}
+	}
+
+	// Create .git file pointing to the bare repository
+	gitFilePath := filepath.Join(directory, ".git")
+	if err := os.WriteFile(gitFilePath, []byte("gitdir: ./.bare\n"), 0644); err != nil {
+		return fmt.Errorf("failed to create .git file: %w", err)
 	}
 
 	// Get default branch
