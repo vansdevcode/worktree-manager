@@ -16,6 +16,7 @@ func runDaemon(_ *cobra.Command, _ []string) error {
 	d := daemon.New(
 		DefaultRoutesPath(),
 		daemon.DefaultPIDPath(),
+		DefaultSocketPath(),
 		"127.0.0.1:53",
 		80,
 		443,

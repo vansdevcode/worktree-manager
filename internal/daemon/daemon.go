@@ -1,7 +1,10 @@
 package daemon
 
 import (
+	"bufio"
 	"fmt"
+	"log"
+	"net"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -16,20 +19,22 @@ import (
 
 // Daemon manages the DNS server and reverse proxy lifecycle.
 type Daemon struct {
-	routesPath string
-	pidPath    string
-	dnsAddr    string
-	httpPort   int
-	httpsPort  int
-	dnsServer  *dns.Server
+	routesPath  string
+	pidPath     string
+	socketPath  string
+	dnsAddr     string
+	httpPort    int
+	httpsPort   int
+	dnsServer   *dns.Server
 	proxyServer *proxy.Server
 }
 
 // New creates a daemon with the given configuration.
-func New(routesPath, pidPath, dnsAddr string, httpPort, httpsPort int) *Daemon {
+func New(routesPath, pidPath, socketPath, dnsAddr string, httpPort, httpsPort int) *Daemon {
 	return &Daemon{
 		routesPath: routesPath,
 		pidPath:    pidPath,
+		socketPath: socketPath,
 		dnsAddr:    dnsAddr,
 		httpPort:   httpPort,
 		httpsPort:  httpsPort,
@@ -62,11 +67,73 @@ func (d *Daemon) Run() error {
 	}
 	defer func() { _ = d.proxyServer.Stop() }()
 
+	listener, err := d.startSocket()
+	if err != nil {
+		return fmt.Errorf("starting socket: %w", err)
+	}
+	defer func() {
+		_ = listener.Close()
+		_ = os.Remove(d.socketPath)
+	}()
+
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	<-sig
 
 	return nil
+}
+
+// startSocket creates a Unix socket listener and starts accepting connections
+// in a background goroutine. Each connection can send "reload" to trigger a
+// re-read of routes.yaml and a proxy reload.
+func (d *Daemon) startSocket() (net.Listener, error) {
+	// Remove stale socket file if it exists.
+	_ = os.Remove(d.socketPath)
+
+	listener, err := net.Listen("unix", d.socketPath)
+	if err != nil {
+		return nil, fmt.Errorf("listening on %s: %w", d.socketPath, err)
+	}
+
+	go d.acceptLoop(listener)
+
+	return listener, nil
+}
+
+func (d *Daemon) acceptLoop(listener net.Listener) {
+	for {
+		conn, err := listener.Accept()
+		if err != nil {
+			return // listener closed
+		}
+		go d.handleConn(conn)
+	}
+}
+
+func (d *Daemon) handleConn(conn net.Conn) {
+	defer func() { _ = conn.Close() }()
+
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "reload" {
+			d.reload()
+		}
+	}
+}
+
+func (d *Daemon) reload() {
+	table, err := routing.Load(d.routesPath)
+	if err != nil {
+		log.Printf("reload: loading routes: %v", err)
+		return
+	}
+	if d.proxyServer == nil {
+		return
+	}
+	if err := d.proxyServer.Reload(table); err != nil {
+		log.Printf("reload: reloading proxy: %v", err)
+	}
 }
 
 func (d *Daemon) writePID() error {
