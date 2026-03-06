@@ -40,6 +40,9 @@ func init() {
 	rootCmd.AddCommand(registerCmd)
 	rootCmd.AddCommand(unregisterCmd)
 	rootCmd.AddCommand(listCmd)
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(daemonCmd)
 }
 
 func Execute() {
