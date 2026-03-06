@@ -39,6 +39,7 @@ func DefaultSocketPath() string {
 func init() {
 	rootCmd.AddCommand(registerCmd)
 	rootCmd.AddCommand(unregisterCmd)
+	rootCmd.AddCommand(listCmd)
 }
 
 func Execute() {
