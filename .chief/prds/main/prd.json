@@ -68,7 +68,7 @@
         "Unit tests verify resolution using miekg/dns client against a high port"
       ],
       "priority": 2,
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-006",

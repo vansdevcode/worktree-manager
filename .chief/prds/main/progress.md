@@ -5,6 +5,8 @@
 - Module path: `github.com/vansdevcode/worktree-manager`
 - Existing CLI is `cmd/wtm/`, new devtree CLI goes in `cmd/devtree/`
 - Config dir convention: `~/.config/devtree/` for routing state files
+- DNS package uses `mdns` import alias for `github.com/miekg/dns` to avoid collision with package name
+- miekg/dns `Server.NotifyStartedFunc` callback signals when server is ready to accept connections
 
 ## 2026-03-05 - US-001
 - Implemented `internal/routing` package with routing table YAML state file
@@ -53,4 +55,18 @@
 - **Learnings for future iterations:**
   - `text/tabwriter` works well for CLI table output with tab-separated columns
   - `table.List()` already returns sites sorted alphabetically — no extra sorting needed in the command
+---
+
+## 2026-03-05 - US-005
+- Implemented `internal/dns` package with embedded DNS server
+- `Server` struct wraps UDP and TCP `miekg/dns` servers
+- `handler.ServeDNS` resolves `*.test` A queries to 127.0.0.1, all others get NXDOMAIN
+- Functions: `New(addr)`, `Start()` (blocks until ready), `Stop()`
+- Files changed: `internal/dns/dns.go` (new), `internal/dns/dns_test.go` (new), `go.mod`, `go.sum`
+- 6 tests: UDP/TCP resolution, subdomains, NXDOMAIN for non-.test, NXDOMAIN for non-A queries, case insensitivity
+- **Learnings for future iterations:**
+  - Use `mdns` as import alias for `github.com/miekg/dns` to avoid package name collision
+  - miekg/dns doesn't support port 0; tests must find a free port first via `net.ListenUDP`, then close and pass to `New()`
+  - `Server.NotifyStartedFunc` is the reliable way to wait for server readiness before sending queries
+  - DNS names are FQDN with trailing dot — match with `strings.HasSuffix(name, ".test.")`
 ---
