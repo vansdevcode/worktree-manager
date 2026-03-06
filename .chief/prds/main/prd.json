@@ -82,7 +82,7 @@
         "Integration test: start proxy on high ports, register a route, verify HTTPS request reaches a test HTTP server"
       ],
       "priority": 2,
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-007",

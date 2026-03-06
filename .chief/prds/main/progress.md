@@ -7,6 +7,9 @@
 - Config dir convention: `~/.config/devtree/` for routing state files
 - DNS package uses `mdns` import alias for `github.com/miekg/dns` to avoid collision with package name
 - miekg/dns `Server.NotifyStartedFunc` callback signals when server is ready to accept connections
+- Caddy programmatic config: build JSON as `map[string]any`, marshal, pass to `caddy.Load(data, true)`
+- Import `_ "github.com/caddyserver/caddy/v2/modules/standard"` to register all standard Caddy modules
+- TLS test clients must set `ServerName` in `tls.Config` to match the domain (SNI), not the IP address
 
 ## 2026-03-05 - US-001
 - Implemented `internal/routing` package with routing table YAML state file
@@ -69,4 +72,19 @@
   - miekg/dns doesn't support port 0; tests must find a free port first via `net.ListenUDP`, then close and pass to `New()`
   - `Server.NotifyStartedFunc` is the reliable way to wait for server readiness before sending queries
   - DNS names are FQDN with trailing dot — match with `strings.HasSuffix(name, ".test.")`
+---
+
+## 2026-03-05 - US-006
+- Implemented `internal/proxy` package with TLS-terminating reverse proxy using embedded Caddy
+- `Server` struct wraps Caddy with `New(httpPort, httpsPort)`, `Start(table)`, `Reload(table)`, `Stop()`
+- `buildConfig()` creates Caddy JSON config programmatically with `tls internal` issuers and `reverse_proxy` handlers
+- Config loaded via `caddy.Load(data, true)` — no Caddyfile on disk
+- Files changed: `internal/proxy/proxy.go` (new), `internal/proxy/proxy_test.go` (new), `go.mod`, `go.sum`
+- 2 tests: round-trip HTTPS through proxy to backend, reload with new route
+- **Learnings for future iterations:**
+  - Caddy's `caddy.Load()` takes JSON bytes and a boolean (whether to retain config in memory)
+  - Import `_ "github.com/caddyserver/caddy/v2/modules/standard"` to register HTTP, TLS, reverse_proxy modules
+  - When testing TLS with `http.Client`, must set `tls.Config.ServerName` to match the domain — the URL hostname sets SNI, not the `Host` header
+  - Caddy stores its internal CA at `~/Library/Application Support/Caddy/pki/authorities/local/` on macOS; expired CAs cause "tls: internal error"
+  - Caddy global instance: only one Caddy runs per process; `caddy.Stop()` stops it; tests share the process
 ---
