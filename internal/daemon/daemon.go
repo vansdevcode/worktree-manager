@@ -12,6 +12,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/vansdevcode/worktree-manager/internal/dashboard"
 	"github.com/vansdevcode/worktree-manager/internal/dns"
 	"github.com/vansdevcode/worktree-manager/internal/proxy"
 	"github.com/vansdevcode/worktree-manager/internal/routing"
@@ -60,8 +61,18 @@ func (d *Daemon) Run() error {
 	}
 	defer func() { _ = d.dnsServer.Stop() }()
 
+	dashSrv := dashboard.New(d.routesPath)
+	dashPort, err := dashSrv.Start()
+	if err != nil {
+		_ = d.dnsServer.Stop()
+		return fmt.Errorf("starting dashboard: %w", err)
+	}
+	defer func() { _ = dashSrv.Stop() }()
+
 	d.proxyServer = proxy.New(d.httpPort, d.httpsPort)
+	d.proxyServer.SetDashboardPort(dashPort)
 	if err := d.proxyServer.Start(table); err != nil {
+		_ = dashSrv.Stop()
 		_ = d.dnsServer.Stop()
 		return fmt.Errorf("starting proxy: %w", err)
 	}

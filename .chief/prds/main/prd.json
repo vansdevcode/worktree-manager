@@ -126,7 +126,7 @@
         "Health check: basic TCP connect to each upstream; green dot if reachable, red if not"
       ],
       "priority": 4,
-      "passes": false
+      "passes": true
     },
     {
       "id": "US-010",

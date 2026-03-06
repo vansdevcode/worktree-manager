@@ -12,8 +12,9 @@ import (
 
 // Server wraps an embedded Caddy instance for TLS-terminating reverse proxying.
 type Server struct {
-	httpPort  int
-	httpsPort int
+	httpPort      int
+	httpsPort     int
+	dashboardPort int
 }
 
 // New creates a proxy server that will listen on the given ports.
@@ -22,6 +23,11 @@ func New(httpPort, httpsPort int) *Server {
 		httpPort:  httpPort,
 		httpsPort: httpsPort,
 	}
+}
+
+// SetDashboardPort configures the internal port for the dashboard reverse proxy route.
+func (s *Server) SetDashboardPort(port int) {
+	s.dashboardPort = port
 }
 
 // Start loads the Caddy config built from the routing table.
@@ -56,7 +62,25 @@ func (s *Server) load(table *routing.Table) error {
 
 // buildConfig creates a Caddy JSON config from the routing table.
 func (s *Server) buildConfig(table *routing.Table) map[string]any {
-	routes := make([]map[string]any, 0, len(table.Sites))
+	routes := make([]map[string]any, 0, len(table.Sites)+1)
+
+	// Add dashboard route if configured.
+	if s.dashboardPort > 0 {
+		routes = append(routes, map[string]any{
+			"match": []map[string]any{
+				{"host": []string{"dashboard.devtree.test"}},
+			},
+			"handle": []map[string]any{
+				{
+					"handler": "reverse_proxy",
+					"upstreams": []map[string]any{
+						{"dial": fmt.Sprintf("127.0.0.1:%d", s.dashboardPort)},
+					},
+				},
+			},
+		})
+	}
+
 	for domain, site := range table.Sites {
 		route := map[string]any{
 			"match": []map[string]any{

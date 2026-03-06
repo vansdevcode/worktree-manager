@@ -14,6 +14,7 @@
 - PID file lifecycle: write on start, check with signal 0, remove on stop/SIGTERM cleanup
 - Platform-specific code uses build tags in separate files (e.g., `daemon_unix.go` with `//go:build !windows`)
 - Unix socket paths limited to ~104 chars on macOS; use `/tmp` for test sockets, not `t.TempDir()`
+- Dashboard pattern: separate HTTP server on random port, reverse-proxied by Caddy via `SetDashboardPort()`
 
 ## 2026-03-05 - US-001
 - Implemented `internal/routing` package with routing table YAML state file
@@ -123,4 +124,22 @@
   - Unix socket paths are limited to ~104 chars on macOS; use `/tmp` for test socket paths, not `t.TempDir()`
   - `proxyServer` may be nil when socket receives reload in tests; add nil check before calling `Reload()`
   - `bufio.Scanner` with line-based protocol ("reload\n") works well for simple Unix socket commands
+---
+
+## 2026-03-05 - US-009
+- Implemented `internal/dashboard` package with embedded HTML dashboard and JSON API
+- Single HTML page embedded via `go:embed` — no build tools or JS framework
+- `Server` struct with `New(routesPath)`, `Start()` (returns port), `Stop()`
+- JSON API at `/api/status` returns sites with domain, upstream, meta, and health status
+- Health check: TCP connect with 500ms timeout to each upstream; green/red dot
+- HTML dashboard auto-refreshes every 5s via `setInterval` + `fetch`
+- Integrated into daemon: dashboard server starts on random port, Caddy reverse-proxies `dashboard.devtree.test` to it
+- Added `SetDashboardPort(port)` to proxy `Server` to configure the dashboard route in Caddy config
+- Files changed: `internal/dashboard/dashboard.go` (new), `internal/dashboard/index.html` (new), `internal/dashboard/dashboard_test.go` (new), `internal/daemon/daemon.go` (modified), `internal/proxy/proxy.go` (modified)
+- 4 tests: HTML serving, empty API response, API with routes + health checks, checkHealth unit test
+- **Learnings for future iterations:**
+  - `go:embed` with `embed.FS` works well for serving single-file HTML dashboards via `http.FileServer`
+  - Dashboard as a separate HTTP server reverse-proxied by Caddy is simpler than writing a custom Caddy module
+  - `net.DialTimeout("tcp", addr, timeout)` is the simplest health check for TCP services
+  - Dashboard route must be added before user routes in Caddy config to avoid domain conflicts
 ---

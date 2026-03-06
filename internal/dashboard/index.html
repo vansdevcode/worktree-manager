@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>devtree dashboard</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f172a; color: #e2e8f0; padding: 2rem; }
+  h1 { font-size: 1.5rem; margin-bottom: 1.5rem; color: #38bdf8; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; padding: 0.75rem 1rem; color: #94a3b8; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid #1e293b; }
+  td { padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; font-size: 0.875rem; }
+  a { color: #38bdf8; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
+  .dot.green { background: #22c55e; }
+  .dot.red { background: #ef4444; }
+  .meta-label { display: inline-block; background: #1e293b; padding: 0.15rem 0.5rem; border-radius: 0.25rem; font-size: 0.75rem; margin-right: 0.25rem; color: #94a3b8; }
+  .empty { color: #64748b; padding: 2rem; text-align: center; }
+  .updated { font-size: 0.75rem; color: #475569; margin-top: 1rem; }
+</style>
+</head>
+<body>
+<h1>devtree dashboard</h1>
+<div id="content"><p class="empty">Loading...</p></div>
+<p class="updated" id="updated"></p>
+<script>
+function render(data) {
+  const sites = data.sites || [];
+  if (sites.length === 0) {
+    document.getElementById("content").innerHTML = '<p class="empty">No routes registered</p>';
+    return;
+  }
+  let html = '<table><thead><tr><th>Status</th><th>Domain</th><th>Upstream</th><th>Meta</th></tr></thead><tbody>';
+  for (const s of sites) {
+    const dotClass = s.healthy ? "green" : "red";
+    const metaHtml = Object.entries(s.meta || {}).map(([k, v]) => '<span class="meta-label">' + esc(k) + '=' + esc(v) + '</span>').join(" ");
+    html += '<tr>';
+    html += '<td><span class="dot ' + dotClass + '"></span></td>';
+    html += '<td><a href="https://' + esc(s.domain) + '">' + esc(s.domain) + '</a></td>';
+    html += '<td>' + esc(s.upstream) + '</td>';
+    html += '<td>' + metaHtml + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  document.getElementById("content").innerHTML = html;
+}
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s;
+  return d.innerHTML;
+}
+async function refresh() {
+  try {
+    const resp = await fetch("/api/status");
+    const data = await resp.json();
+    render(data);
+    document.getElementById("updated").textContent = "Updated: " + new Date().toLocaleTimeString();
+  } catch (e) {
+    document.getElementById("updated").textContent = "Error: " + e.message;
+  }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>
