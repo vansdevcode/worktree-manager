@@ -10,7 +10,6 @@
       "Bash(npx tailwindcss init:*)",
       "Glob(**)",
       "LS(**)",
-      "WebSearch(**)",
       "Bash(git add:*)",
       "Bash(git mv:*)",
       "Bash(git stash:*)",
@@ -31,7 +30,8 @@
       "Bash(go build:*)",
       "Bash(go test:*)",
       "Bash(chmod:*)",
-      "Bash(mise r lint:*)"
+      "Bash(mise r lint:*)",
+      "Bash(go vet:*)"
     ],
     "deny": [],
     "ask": []

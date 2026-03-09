@@ -6,7 +6,7 @@ go = "1.25" # Go version for building the CLI
 
 [tasks.build]
 description = "Build the wtm binary"
-run = "go build -v -o wtm ./cmd/wtm"
+run = ["go build -v -o wtm ./cmd/wtm", "go build -v -o devtree ./cmd/devtree"]
 
 [tasks.test]
 description = "Run unit tests with coverage"
@@ -30,9 +30,13 @@ run = [
   "chmod +x ~/.local/bin/wtm",
   "mkdir -p ~/.local/share/gh-wtm",
   "ln -sf ~/.local/bin/wtm ~/.local/share/gh-wtm/gh-wtm",
-  "cd ~/.local/share/gh-wtm && gh extension install .",
+  "cd ~/.local/share/gh-wtm && gh extension install . || true",
   "echo '✓ Installed as gh extension: gh wtm'",
   "echo '✓ Installed standalone: wtm (ensure ~/.local/bin is in PATH)'",
+  "cp devtree ~/.local/bin/devtree",
+  "chmod +x ~/.local/bin/devtree",
+  "mkdir -p ~/.local/share/devtree",
+  "echo '✓ Installed standalone: devtree (ensure ~/.local/bin is in PATH)'",
 ]
 
 [tasks.uninstall]

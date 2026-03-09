@@ -63,9 +63,11 @@ func (s *Server) load(table *routing.Table) error {
 // buildConfig creates a Caddy JSON config from the routing table.
 func (s *Server) buildConfig(table *routing.Table) map[string]any {
 	routes := make([]map[string]any, 0, len(table.Sites)+1)
+	subjects := make([]string, 0, len(table.Sites)+1)
 
 	// Add dashboard route if configured.
 	if s.dashboardPort > 0 {
+		subjects = append(subjects, "dashboard.devtree.test")
 		routes = append(routes, map[string]any{
 			"match": []map[string]any{
 				{"host": []string{"dashboard.devtree.test"}},
@@ -82,6 +84,7 @@ func (s *Server) buildConfig(table *routing.Table) map[string]any {
 	}
 
 	for domain, site := range table.Sites {
+		subjects = append(subjects, domain)
 		route := map[string]any{
 			"match": []map[string]any{
 				{"host": []string{domain}},
@@ -115,6 +118,7 @@ func (s *Server) buildConfig(table *routing.Table) map[string]any {
 				"automation": map[string]any{
 					"policies": []map[string]any{
 						{
+							"subjects": subjects,
 							"issuers": []map[string]any{
 								{"module": "internal"},
 							},
