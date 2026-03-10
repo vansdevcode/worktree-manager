@@ -10,6 +10,7 @@ import (
 	"github.com/vansdevcode/worktree-manager/internal/config"
 	"github.com/vansdevcode/worktree-manager/internal/git"
 	"github.com/vansdevcode/worktree-manager/internal/hook"
+	"github.com/vansdevcode/worktree-manager/internal/state"
 	"github.com/vansdevcode/worktree-manager/pkg/ui"
 )
 
@@ -33,7 +34,7 @@ var (
 func init() {
 	rmCmd.Flags().BoolVarP(&rmForce, "force", "f", false, "Force removal even with uncommitted changes")
 	rmCmd.Flags().BoolVarP(&rmDeleteBranch, "delete-branch", "d", false, "Also delete the branch")
-	rmCmd.Flags().BoolVar(&rmNoHooks, "no-hooks", false, "Skip running post-delete hooks")
+	rmCmd.Flags().BoolVar(&rmNoHooks, "no-hooks", false, "Skip running hooks")
 }
 
 func runRm(cmd *cobra.Command, args []string) error {
@@ -109,11 +110,23 @@ func runRm(cmd *cobra.Command, args []string) error {
 		branchName = "" // Clear branch name to skip hooks
 	}
 
-	// Run post-delete hook before removal
+	// Load state for hook vars
+	var vars map[string]string
+	if s, err := state.Load(rootDir, worktreePath); err == nil && s.Vars != nil {
+		vars = s.Vars
+	}
+
+	// Run pre-delete hook
 	if !rmNoHooks && branchName != "" {
-		ui.Info("Running post-delete hook...")
-		if err := hook.RunHookByName(rootDir, "post-delete", branchName, worktreePath); err != nil {
-			ui.Warning("Post-delete hook failed: %v", err)
+		if err := hook.RunHookByName(rootDir, "pre-delete", branchName, worktreePath, vars); err != nil {
+			return fmt.Errorf("pre-delete hook failed: %w", err)
+		}
+	}
+
+	// Run post-delete hook before removal (while worktree still exists)
+	if !rmNoHooks && branchName != "" {
+		if err := hook.RunHookByName(rootDir, "post-delete", branchName, worktreePath, vars); err != nil {
+			return fmt.Errorf("post-delete hook failed: %w", err)
 		}
 	}
 
@@ -139,6 +152,11 @@ func runRm(cmd *cobra.Command, args []string) error {
 		}
 	} else if rmDeleteBranch && branchName == "" {
 		ui.Warning("⚠ Cannot delete branch: branch name could not be determined")
+	}
+
+	// Clean up state file
+	if err := state.Remove(rootDir, worktreePath); err != nil {
+		ui.Warning("Failed to remove state file: %v", err)
 	}
 
 	ui.Success("✓ Worktree removed successfully")

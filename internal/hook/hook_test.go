@@ -113,7 +113,7 @@ echo "{{ .Branch | strings.Slug }}"
 				t.Fatalf("Failed to write hook: %v", err)
 			}
 
-			err = RunHook(hookPath, tt.branch, branchDir, tmpDir)
+			err = RunHook(hookPath, tt.branch, branchDir, tmpDir, nil)
 
 			if tt.expectError && err == nil {
 				t.Errorf("Expected error but got none")
@@ -125,8 +125,33 @@ echo "{{ .Branch | strings.Slug }}"
 	}
 }
 
+func TestRunHook_WithVars(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hook-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	branchDir := filepath.Join(tmpDir, "feat-branch")
+	if err := os.MkdirAll(branchDir, 0755); err != nil {
+		t.Fatalf("Failed to create branch dir: %v", err)
+	}
+
+	hookPath := filepath.Join(tmpDir, "test-hook")
+	script := "#!/bin/bash\necho \"{{ index .Vars \"ticket\" }}\"\n"
+	if err := os.WriteFile(hookPath, []byte(script), 0755); err != nil {
+		t.Fatalf("Failed to write hook: %v", err)
+	}
+
+	vars := map[string]string{"ticket": "PROJ-456"}
+	err = RunHook(hookPath, "feat-branch", branchDir, tmpDir, vars)
+	if err != nil {
+		t.Errorf("Unexpected error: %v", err)
+	}
+}
+
 func TestRunHook_NonExistent(t *testing.T) {
-	err := RunHook("/nonexistent/path/hook", "branch", "/tmp", "/tmp")
+	err := RunHook("/nonexistent/path/hook", "branch", "/tmp", "/tmp", nil)
 	if err != nil {
 		t.Errorf("Expected nil for non-existent hook, got: %v", err)
 	}
@@ -144,7 +169,7 @@ func TestRunHook_NotExecutable(t *testing.T) {
 		t.Fatalf("Failed to write hook: %v", err)
 	}
 
-	err = RunHook(hookPath, "branch", tmpDir, tmpDir)
+	err = RunHook(hookPath, "branch", tmpDir, tmpDir, nil)
 	if err != nil {
 		t.Errorf("Expected nil for non-executable hook, got: %v", err)
 	}
@@ -176,14 +201,53 @@ func TestRunHookByName(t *testing.T) {
 		t.Fatalf("Failed to create branch dir: %v", err)
 	}
 
-	err = RunHookByName(tmpDir, "post-create", "test-branch", branchDir)
+	err = RunHookByName(tmpDir, "post-create", "test-branch", branchDir, nil)
 	if err != nil {
 		t.Errorf("Unexpected error: %v", err)
 	}
 }
 
+func TestRunHook_NonZeroExitReturnsError(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "hook-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	hookPath := filepath.Join(tmpDir, "failing-hook")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/bash\nexit 1\n"), 0755); err != nil {
+		t.Fatalf("Failed to write hook: %v", err)
+	}
+
+	err = RunHook(hookPath, "branch", tmpDir, tmpDir, nil)
+	if err == nil {
+		t.Error("Expected error for non-zero exit code, got nil")
+	}
+}
+
+func TestRunHook_BranchDirNotExist(t *testing.T) {
+	// Pre-create hooks run before the worktree directory exists.
+	// RunHook should fall back to rootDirectory as the working dir.
+	tmpDir, err := os.MkdirTemp("", "hook-test-*")
+	if err != nil {
+		t.Fatalf("Failed to create temp dir: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmpDir) }()
+
+	hookPath := filepath.Join(tmpDir, "pre-create")
+	if err := os.WriteFile(hookPath, []byte("#!/bin/bash\necho pre-create\n"), 0755); err != nil {
+		t.Fatalf("Failed to write hook: %v", err)
+	}
+
+	nonExistentDir := filepath.Join(tmpDir, "does-not-exist")
+	err = RunHook(hookPath, "new-branch", nonExistentDir, tmpDir, nil)
+	if err != nil {
+		t.Errorf("Expected nil when branchDir doesn't exist, got: %v", err)
+	}
+}
+
 func TestRunHookByName_NonExistent(t *testing.T) {
-	err := RunHookByName("/tmp", "nonexistent-hook", "branch", "/tmp")
+	err := RunHookByName("/tmp", "nonexistent-hook", "branch", "/tmp", nil)
 	if err != nil {
 		t.Errorf("Expected nil for non-existent hook, got: %v", err)
 	}

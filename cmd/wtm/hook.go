@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vansdevcode/worktree-manager/internal/hook"
+	"github.com/vansdevcode/worktree-manager/internal/state"
 )
 
 var hookCmd = &cobra.Command{
@@ -20,6 +21,7 @@ The script has access to template variables:
   - .Branch: The branch name (e.g., "feature/user-auth")
   - .Directory: Absolute path to worktree directory
   - .RootDirectory: Absolute path to repository root
+  - .Vars: Custom variables set via -v flag (e.g., {{ index .Vars "ticket" }})
 
 And all gomplate functions (https://docs.gomplate.ca/functions/):
   - strings.Slug: Convert to URL-friendly slug
@@ -54,7 +56,13 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	return hook.RunHookByName(ctx.RootDirectory, hookName, ctx.Branch, ctx.Directory)
+	// Load custom variables from state
+	var vars map[string]string
+	if s, err := state.Load(ctx.RootDirectory, ctx.Directory); err == nil && s.Vars != nil {
+		vars = s.Vars
+	}
+
+	return hook.RunHookByName(ctx.RootDirectory, hookName, ctx.Branch, ctx.Directory, vars)
 }
 
 // inferWorktreeContext determines the worktree context from the current working directory

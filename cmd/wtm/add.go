@@ -13,6 +13,7 @@ import (
 	"github.com/vansdevcode/worktree-manager/internal/git"
 	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/pr"
+	"github.com/vansdevcode/worktree-manager/internal/state"
 	"github.com/vansdevcode/worktree-manager/internal/template"
 	"github.com/vansdevcode/worktree-manager/internal/worktree"
 	"github.com/vansdevcode/worktree-manager/pkg/ui"
@@ -27,19 +28,24 @@ If the branch doesn't exist, it will be created from the base branch.
 Supports PR syntax: pr/<number> or pr/<number>/<custom-name>
 
 Examples:
-  wtmadd main feature-x          # Create feature-x from main
-  wtmadd main                    # Create worktree for main branch
-  wtmadd main feature-y my-dir   # Create in custom directory
-  wtmadd pr/123                  # Checkout PR #123
-  wtmadd pr/123 custom-name      # PR #123 in custom directory`,
+  wtm add main feature-x              # Create feature-x from main
+  wtm add main                        # Create worktree for main branch
+  wtm add main feature-y my-dir       # Create in custom directory
+  wtm add pr/123                      # Checkout PR #123
+  wtm add pr/123 custom-name          # PR #123 in custom directory
+  wtm add main feat/T-123 -v ticket=T-123  # With custom variable`,
 	Args: cobra.RangeArgs(1, 3),
 	RunE: runAdd,
 }
 
-var addNoHooks bool
+var (
+	addNoHooks bool
+	addVars    []string
+)
 
 func init() {
-	addCmd.Flags().BoolVar(&addNoHooks, "no-hooks", false, "Skip running post-create hooks")
+	addCmd.Flags().BoolVar(&addNoHooks, "no-hooks", false, "Skip running hooks")
+	addCmd.Flags().StringArrayVarP(&addVars, "var", "v", nil, "Set custom variable (key=value), can be repeated")
 }
 
 // normalizeRemoteBranch extracts the local branch name from a remote branch reference
@@ -129,6 +135,19 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("directory '%s' already exists", directory)
 	}
 
+	// Parse custom variables
+	vars, err := parseVars(addVars)
+	if err != nil {
+		return err
+	}
+
+	// Run pre-create hook
+	if !addNoHooks {
+		if err := hook.RunHookByName(rootDir, "pre-create", newBranch, worktreePath, vars); err != nil {
+			return fmt.Errorf("pre-create hook failed: %w", err)
+		}
+	}
+
 	// Handle PR checkout
 	if isPR {
 		ui.Info("Fetching PR #%d...", prNumber)
@@ -173,6 +192,14 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Save state if there are custom variables
+	if len(vars) > 0 {
+		s := &state.State{Vars: vars}
+		if err := state.Save(rootDir, worktreePath, s); err != nil {
+			ui.Warning("Failed to save state: %v", err)
+		}
+	}
+
 	// Process files
 	filesDir := config.GetFilesDir(rootDir)
 	if _, err := os.Stat(filesDir); err == nil {
@@ -181,6 +208,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 			Branch:        newBranch,
 			Directory:     worktreePath,
 			RootDirectory: rootDir,
+			Vars:          vars,
 		}
 		if err := template.ProcessTemplates(filesDir, worktreePath, data); err != nil {
 			ui.Warning("Failed to process files: %v", err)
@@ -189,9 +217,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Run post-create hook
 	if !addNoHooks {
-		ui.Info("Running post-create hook...")
-		if err := hook.RunHookByName(rootDir, "post-create", newBranch, worktreePath); err != nil {
-			ui.Warning("Post-create hook failed: %v", err)
+		if err := hook.RunHookByName(rootDir, "post-create", newBranch, worktreePath, vars); err != nil {
+			return fmt.Errorf("post-create hook failed: %w", err)
 		}
 	}
 
@@ -200,4 +227,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	ui.Info("  Directory: %s", worktreePath)
 
 	return nil
+}
+
+// parseVars parses custom variable flags in "key=value" format.
+func parseVars(raw []string) (map[string]string, error) {
+	if len(raw) == 0 {
+		return nil, nil
+	}
+	vars := make(map[string]string, len(raw))
+	for _, v := range raw {
+		key, value, ok := strings.Cut(v, "=")
+		if !ok || key == "" {
+			return nil, fmt.Errorf("invalid variable format %q, expected key=value", v)
+		}
+		vars[key] = value
+	}
+	return vars, nil
 }
