@@ -19,6 +19,7 @@ type TemplateData struct {
 	Branch        string
 	Directory     string
 	RootDirectory string
+	Vars          map[string]string
 }
 
 // RunHook processes a hook script as a Go template and executes it.
@@ -26,7 +27,8 @@ type TemplateData struct {
 // branchName: the branch name (for template data)
 // branchDirectory: absolute path to the worktree directory
 // rootDirectory: absolute path to the repository root
-func RunHook(hookPath, branchName, branchDirectory, rootDirectory string) error {
+// vars: user-defined custom variables (may be nil)
+func RunHook(hookPath, branchName, branchDirectory, rootDirectory string, vars map[string]string) error {
 	// Check if hook exists and is executable
 	info, err := os.Stat(hookPath)
 	if err != nil {
@@ -52,6 +54,7 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string) error 
 		Branch:        branchName,
 		Directory:     branchDirectory,
 		RootDirectory: rootDirectory,
+		Vars:          vars,
 	}
 
 	ctx := context.Background()
@@ -92,7 +95,13 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string) error 
 	interpreterParts := strings.Fields(interpreter)
 
 	cmd := exec.Command(interpreterParts[0], append(interpreterParts[1:], tmpFile.Name())...)
-	cmd.Dir = branchDirectory
+	// Use branchDirectory as working dir if it exists, otherwise fall back to rootDirectory.
+	// This allows pre-create hooks to run before the worktree directory is created.
+	if _, statErr := os.Stat(branchDirectory); statErr == nil {
+		cmd.Dir = branchDirectory
+	} else {
+		cmd.Dir = rootDirectory
+	}
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -106,9 +115,9 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string) error 
 }
 
 // RunHookByName finds a hook by name in .worktree/hooks/ and runs it.
-func RunHookByName(rootDirectory, hookName, branchName, branchDirectory string) error {
+func RunHookByName(rootDirectory, hookName, branchName, branchDirectory string, vars map[string]string) error {
 	hookPath := filepath.Join(rootDirectory, ".worktree", "hooks", hookName)
-	return RunHook(hookPath, branchName, branchDirectory, rootDirectory)
+	return RunHook(hookPath, branchName, branchDirectory, rootDirectory, vars)
 }
 
 // ExtractShebang extracts the shebang line and returns the interpreter and remaining content

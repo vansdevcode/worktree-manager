@@ -179,6 +179,26 @@ func TestProcessTemplates(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "custom variables in template",
+			setupFiles: map[string]fileInfo{
+				"config.env.tmpl": {
+					content: `TICKET={{ index .Vars "ticket" }}
+DB=app_{{ index .Vars "env" }}`,
+					mode: 0644,
+				},
+			},
+			templateData: TemplateData{
+				Branch:        "feat/PROJ-123",
+				Directory:     "/workspace/feat-proj-123",
+				RootDirectory: "/workspace",
+				Vars:          map[string]string{"ticket": "PROJ-123", "env": "staging"},
+			},
+			wantFiles: map[string]string{
+				"config.env": "TICKET=PROJ-123\nDB=app_staging",
+			},
+			wantErr: false,
+		},
+		{
 			name: "all template data fields",
 			setupFiles: map[string]fileInfo{
 				"full-data.txt.tmpl": {
@@ -363,6 +383,18 @@ func TestProcessTemplateFile(t *testing.T) {
 				RootDirectory: "/root",
 			},
 			wantOutput: "FEATURE/AUTH",
+			wantErr:    false,
+		},
+		{
+			name:         "custom vars with index",
+			templateText: `{{ index .Vars "myKey" }}`,
+			data: TemplateData{
+				Branch:        "main",
+				Directory:     "/path",
+				RootDirectory: "/root",
+				Vars:          map[string]string{"myKey": "myValue"},
+			},
+			wantOutput: "myValue",
 			wantErr:    false,
 		},
 		{

@@ -140,9 +140,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 
 	// Run post-create hook
 	if !initNoHooks {
-		ui.Info("Running post-create hook...")
-		if err := hook.RunHookByName(directory, "post-create", defaultBranch, worktreePath); err != nil {
-			ui.Warning("Post-create hook failed: %v", err)
+		if err := hook.RunHookByName(directory, "post-create", defaultBranch, worktreePath, nil); err != nil {
+			return fmt.Errorf("post-create hook failed: %w", err)
 		}
 	}
 

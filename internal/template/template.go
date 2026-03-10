@@ -14,9 +14,10 @@ import (
 
 // TemplateData contains variables available in templates
 type TemplateData struct {
-	Branch        string // Branch name (e.g., "feature/user-auth")
-	Directory     string // Absolute path to worktree directory
-	RootDirectory string // Absolute path to repository root
+	Branch        string            // Branch name (e.g., "feature/user-auth")
+	Directory     string            // Absolute path to worktree directory
+	RootDirectory string            // Absolute path to repository root
+	Vars          map[string]string // User-defined custom variables
 }
 
 // ProcessTemplates processes all files in .worktree/files/
