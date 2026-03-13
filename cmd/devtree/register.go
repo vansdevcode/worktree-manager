@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -80,11 +79,6 @@ func parseMeta(pairs []string) map[string]string {
 }
 
 func sendReload() {
-	sockPath := DefaultSocketPath()
-	conn, err := net.Dial("unix", sockPath)
-	if err != nil {
-		return
-	}
-	defer func() { _ = conn.Close() }()
-	_, _ = conn.Write([]byte("reload\n"))
+	client := newClient()
+	_ = client.SendReload()
 }

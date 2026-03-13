@@ -741,9 +741,43 @@ wtm rm feature-branch --force
 
 ## Development
 
-This project uses [mise](https://mise.jdx.dev/) for task automation and tool management.
+This project supports both [mise](https://mise.jdx.dev/) and [Nix](https://nixos.org/) for development environment setup.
 
-### Setup
+### Setup with Nix (recommended)
+
+The project includes a `flake.nix` that provides a reproducible dev shell with all required tools and system libraries (including macOS SDK dependencies for CGo).
+
+```bash
+# Clone the repository
+git clone https://github.com/vansdevcode/worktree-manager.git
+cd worktree-manager
+
+# Enter the dev shell
+nix develop
+
+# Or with direnv (add to .envrc):
+# use flake
+```
+
+The Nix dev shell provides Go 1.25, golangci-lint, gh, macOS SDK libraries (darwin only), and task scripts mirroring the mise tasks:
+
+```bash
+wtm-build      # Build wtm and devtree binaries
+wtm-test       # Run unit tests with coverage
+wtm-coverage   # Run tests then show coverage report
+wtm-clean      # Clean build artifacts
+wtm-install    # Install as gh extension and standalone command
+wtm-uninstall  # Uninstall gh extension and standalone command
+wtm-lint       # Run golangci-lint
+wtm-fmt        # Format Go code
+wtm-vet        # Run go vet
+wtm-tidy       # Tidy Go modules
+wtm-check      # Run all checks (fmt, vet, lint, test)
+wtm-dev        # Build and run wtm --help
+wtm-tasks      # Show all available tasks
+```
+
+### Setup with mise
 
 ```bash
 # Install mise if you haven't already
@@ -787,9 +821,9 @@ mise run lint
 
 ### Required Tools
 
-Tools are automatically managed by mise (defined in `.mise.toml`):
+Tools are automatically managed by mise or Nix (defined in `.mise.toml` / `flake.nix`):
 
-- **Go 1.22+** - Auto-installed by mise
+- **Go 1.25** - Auto-installed by mise or Nix
 - **Git 2.5+** - Required for worktree support (must be installed separately)
 
 ### Running Tests

@@ -45,6 +45,14 @@ func (s *Server) Stop() error {
 	return caddy.Stop()
 }
 
+// redirectLocation returns the Caddy placeholder template for the HTTPS redirect Location header.
+func (s *Server) redirectLocation() string {
+	if s.httpsPort == 443 {
+		return "https://{http.request.host}{http.request.uri}"
+	}
+	return fmt.Sprintf("https://{http.request.host}:%d{http.request.uri}", s.httpsPort)
+}
+
 func (s *Server) load(table *routing.Table) error {
 	cfg := s.buildConfig(table)
 
@@ -60,6 +68,24 @@ func (s *Server) load(table *routing.Table) error {
 	return nil
 }
 
+// reverseProxyHandler returns a Caddy reverse_proxy handler config that
+// forwards requests to the given dial address with proper proxy headers.
+func reverseProxyHandler(dial string) map[string]any {
+	return map[string]any{
+		"handler": "reverse_proxy",
+		"headers": map[string]any{
+			"request": map[string]any{
+				"set": map[string][]string{
+					"X-Forwarded-Proto": {"{http.request.scheme}"},
+				},
+			},
+		},
+		"upstreams": []map[string]any{
+			{"dial": dial},
+		},
+	}
+}
+
 // buildConfig creates a Caddy JSON config from the routing table.
 func (s *Server) buildConfig(table *routing.Table) map[string]any {
 	routes := make([]map[string]any, 0, len(table.Sites)+1)
@@ -73,12 +99,7 @@ func (s *Server) buildConfig(table *routing.Table) map[string]any {
 				{"host": []string{"dashboard.devtree.test"}},
 			},
 			"handle": []map[string]any{
-				{
-					"handler": "reverse_proxy",
-					"upstreams": []map[string]any{
-						{"dial": fmt.Sprintf("127.0.0.1:%d", s.dashboardPort)},
-					},
-				},
+				reverseProxyHandler(fmt.Sprintf("127.0.0.1:%d", s.dashboardPort)),
 			},
 		})
 	}
@@ -90,12 +111,7 @@ func (s *Server) buildConfig(table *routing.Table) map[string]any {
 				{"host": []string{domain}},
 			},
 			"handle": []map[string]any{
-				{
-					"handler": "reverse_proxy",
-					"upstreams": []map[string]any{
-						{"dial": site.Upstream},
-					},
-				},
+				reverseProxyHandler(site.Upstream),
 			},
 		}
 		routes = append(routes, route)
@@ -108,9 +124,26 @@ func (s *Server) buildConfig(table *routing.Table) map[string]any {
 				"https_port": s.httpsPort,
 				"servers": map[string]any{
 					"srv0": map[string]any{
-						"listen": []string{fmt.Sprintf(":%d", s.httpsPort)},
-						"routes": routes,
-						"tls_connection_policies": []map[string]any{{}},
+						"listen":                  []string{fmt.Sprintf(":%d", s.httpsPort)},
+						"routes":                  routes,
+						"tls_connection_policies":  []map[string]any{{}},
+						"automatic_https":          map[string]any{"disable_redirects": true},
+					},
+					"srv_redirect": map[string]any{
+						"listen": []string{fmt.Sprintf(":%d", s.httpPort)},
+						"routes": []map[string]any{
+							{
+								"handle": []map[string]any{
+									{
+										"handler": "static_response",
+										"headers": map[string][]string{
+											"Location": {s.redirectLocation()},
+										},
+										"status_code": "301",
+									},
+								},
+							},
+						},
 					},
 				},
 			},

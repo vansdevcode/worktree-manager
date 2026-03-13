@@ -44,6 +44,8 @@ func init() {
 	rootCmd.AddCommand(stopCmd)
 	rootCmd.AddCommand(daemonCmd)
 	rootCmd.AddCommand(bootstrapCmd)
+	rootCmd.AddCommand(processCmd)
+	rootCmd.AddCommand(dashboardCmd)
 }
 
 func Execute() {

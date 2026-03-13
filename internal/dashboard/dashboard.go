@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/vansdevcode/worktree-manager/internal/process"
 	"github.com/vansdevcode/worktree-manager/internal/routing"
 )
 
@@ -27,11 +28,17 @@ type StatusResponse struct {
 	Sites []SiteStatus `json:"sites"`
 }
 
+// ProcessLister provides process status information.
+type ProcessLister interface {
+	List() []process.GroupStatus
+}
+
 // Server serves the dashboard HTML page and JSON API.
 type Server struct {
-	routesPath string
-	httpServer *http.Server
-	listener   net.Listener
+	routesPath    string
+	httpServer    *http.Server
+	listener      net.Listener
+	processLister ProcessLister
 }
 
 // New creates a dashboard server that reads routes from the given path.
@@ -40,10 +47,16 @@ func New(routesPath string) *Server {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/api/processes", s.handleProcesses)
 	mux.Handle("/", http.FileServer(http.FS(indexHTML)))
 
 	s.httpServer = &http.Server{Handler: mux}
 	return s
+}
+
+// SetProcessLister sets the process lister for the /api/processes endpoint.
+func (s *Server) SetProcessLister(pl ProcessLister) {
+	s.processLister = pl
 }
 
 // Start begins listening on a random port and serves in the background.
@@ -85,6 +98,15 @@ func (s *Server) handleStatus(w http.ResponseWriter, _ *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *Server) handleProcesses(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if s.processLister == nil {
+		_ = json.NewEncoder(w).Encode([]struct{}{})
+		return
+	}
+	_ = json.NewEncoder(w).Encode(s.processLister.List())
 }
 
 // checkHealth performs a TCP connect to the upstream to determine if it's reachable.

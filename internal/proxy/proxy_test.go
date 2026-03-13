@@ -99,6 +99,71 @@ func TestProxyRoundTrip(t *testing.T) {
 	}
 }
 
+func TestProxyHTTPRedirectsToHTTPS(t *testing.T) {
+	backendPort := freePort(t)
+	backend := &http.Server{
+		Addr: fmt.Sprintf("127.0.0.1:%d", backendPort),
+		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			_, _ = w.Write([]byte("hello"))
+		}),
+	}
+	go func() { _ = backend.ListenAndServe() }()
+	defer func() { _ = backend.Close() }()
+
+	for i := 0; i < 50; i++ {
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", backendPort), 100*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+
+	table := routing.NewTable()
+	table.Register("myapp.test", fmt.Sprintf("127.0.0.1:%d", backendPort), nil)
+
+	httpPort := freePort(t)
+	httpsPort := freePort(t)
+	srv := New(httpPort, httpsPort)
+
+	if err := srv.Start(table); err != nil {
+		t.Fatalf("starting proxy: %v", err)
+	}
+	defer func() { _ = srv.Stop() }()
+
+	time.Sleep(2 * time.Second)
+
+	// HTTP client that does NOT follow redirects.
+	client := &http.Client{
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+		Timeout: 5 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", fmt.Sprintf("http://127.0.0.1:%d/some/path", httpPort), nil)
+	if err != nil {
+		t.Fatalf("creating request: %v", err)
+	}
+	req.Host = "myapp.test"
+
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("making HTTP request: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusMovedPermanently {
+		t.Errorf("expected status 301, got %d", resp.StatusCode)
+	}
+
+	location := resp.Header.Get("Location")
+	expected := fmt.Sprintf("https://myapp.test:%d/some/path", httpsPort)
+	if location != expected {
+		t.Errorf("expected Location %q, got %q", expected, location)
+	}
+}
+
 func TestProxyReload(t *testing.T) {
 	backendPort := freePort(t)
 	backend := &http.Server{
