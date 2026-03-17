@@ -41,11 +41,13 @@ Examples:
 var (
 	addNoHooks bool
 	addVars    []string
+	addCfgDir  string
 )
 
 func init() {
 	addCmd.Flags().BoolVar(&addNoHooks, "no-hooks", false, "Skip running hooks")
 	addCmd.Flags().StringArrayVarP(&addVars, "var", "v", nil, "Set custom variable (key=value), can be repeated")
+	addCmd.Flags().StringVar(&addCfgDir, "cfg-dir", "", "Configuration directory (default: .worktree)")
 }
 
 // normalizeRemoteBranch extracts the local branch name from a remote branch reference
@@ -71,6 +73,20 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	rootDir, err := config.FindRoot()
 	if err != nil {
 		return fmt.Errorf("not in a worktree-managed repository (no .bare directory found)")
+	}
+
+	// Resolve config directory
+	cfgDir := config.GetWorktreeDir(rootDir) // default: .worktree
+	if addCfgDir != "" {
+		if filepath.IsAbs(addCfgDir) {
+			cfgDir = addCfgDir
+		} else {
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("failed to get working directory: %w", err)
+			}
+			cfgDir = filepath.Join(cwd, addCfgDir)
+		}
 	}
 
 	bareDir := config.GetBareDir(rootDir)
@@ -143,9 +159,22 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Run pre-create hook
 	if !addNoHooks {
-		if err := hook.RunHookByName(rootDir, "pre-create", newBranch, worktreePath, vars); err != nil {
+		hookPath := filepath.Join(cfgDir, "hooks", "pre-create")
+		if err := hook.RunHook(hookPath, newBranch, worktreePath, rootDir, vars); err != nil {
 			return fmt.Errorf("pre-create hook failed: %w", err)
 		}
+	}
+
+	// Fetch remote branch if needed
+	if startPoint != "" {
+		remoteBranch := strings.TrimPrefix(startPoint, "origin/")
+		ui.Info("Fetching remote branch '%s'...", remoteBranch)
+		refSpec := fmt.Sprintf("+refs/heads/%s:refs/remotes/origin/%s", remoteBranch, remoteBranch)
+		if err := git.FetchRef(bareDir, refSpec); err != nil {
+			return fmt.Errorf("failed to fetch remote branch '%s': %w", remoteBranch, err)
+		}
+		// Use full ref path to avoid ambiguous resolution in bare repos
+		startPoint = "refs/remotes/origin/" + remoteBranch
 	}
 
 	// Handle PR checkout
@@ -201,7 +230,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	}
 
 	// Process files
-	filesDir := config.GetFilesDir(rootDir)
+	filesDir := filepath.Join(cfgDir, "files")
 	if _, err := os.Stat(filesDir); err == nil {
 		ui.Info("Processing files...")
 		data := template.TemplateData{
@@ -217,7 +246,8 @@ func runAdd(cmd *cobra.Command, args []string) error {
 
 	// Run post-create hook
 	if !addNoHooks {
-		if err := hook.RunHookByName(rootDir, "post-create", newBranch, worktreePath, vars); err != nil {
+		hookPath := filepath.Join(cfgDir, "hooks", "post-create")
+		if err := hook.RunHook(hookPath, newBranch, worktreePath, rootDir, vars); err != nil {
 			return fmt.Errorf("post-create hook failed: %w", err)
 		}
 	}
