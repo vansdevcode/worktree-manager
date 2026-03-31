@@ -125,7 +125,7 @@ wtm init myorg/newproject --new
 
 **What it does:**
 
-1. Creates a directory structure with a bare repository in `.bare/`
+1. Creates a directory structure with a bare repository in `.git/`
 2. Clones the repository (or creates a new one with `--new`)
 3. Automatically creates a worktree for the default branch
 4. Initializes submodules if present
@@ -255,7 +255,7 @@ wtm ls
 ```
 Worktrees in /Users/you/projects/myrepo:
 
-/Users/you/projects/myrepo/.bare           (bare)
+/Users/you/projects/myrepo/.git            (bare)
 /Users/you/projects/myrepo/main            a1b2c3d [main]
 /Users/you/projects/myrepo/feature-123     d4e5f6g [feature-123]
 ```
@@ -310,7 +310,7 @@ Template files (ending with `.tmpl`) use Go template syntax with these context v
 
 - `{{ .Branch }}` - The branch name of the worktree
 - `{{ .Directory }}` - The absolute path to the worktree directory
-- `{{ .RootDirectory }}` - The absolute path to the repository root (where `.bare` is located)
+- `{{ .RootDirectory }}` - The absolute path to the repository root (where `.git` is located)
 
 ### Example Templates
 
@@ -403,7 +403,7 @@ Hooks have access to the same Go template variables as template files:
 
 - `{{ .Branch }}` - The branch name of the worktree
 - `{{ .Directory }}` - Absolute path to the worktree directory
-- `{{ .RootDirectory }}` - Absolute path to the repository root (where `.bare` is located)
+- `{{ .RootDirectory }}` - Absolute path to the repository root (where `.git` is located)
 
 ### Available Template Functions
 
@@ -633,7 +633,7 @@ wtm add main refactor-payment-module
 
 Work inside the worktree directories, not in the root. The root directory should only contain:
 
-- `.bare/` - The bare repository
+- `.git/` - The bare repository
 - `.worktree/` - Hooks and template files
 - `main/` (or your default branch)
 - Other worktree directories
@@ -676,7 +676,7 @@ After running `wtm init`, your repository structure will look like this:
 
 ```
 myrepo/
-├── .bare/              # Bare repository (your .git folder)
+├── .git/               # Bare repository
 ├── .worktree/          # Hooks and template files (optional)
 │   ├── files/          # Files to copy/process for each worktree
 │   │   ├── .env.tmpl   # Template file (processed → .env)
@@ -686,15 +686,15 @@ myrepo/
 │   ├── post-create     # Hook: runs after worktree creation
 │   └── post-delete     # Hook: runs before worktree deletion
 ├── main/               # Default branch worktree
-│   ├── .git            # Points to ../.bare
+│   ├── .git            # Points to ../.git
 │   └── ... your code ...
 ├── feature-123/        # Feature branch worktree
-│   ├── .git            # Points to ../.bare
+│   ├── .git            # Points to ../.git
 │   ├── .env            # Generated from .env.tmpl
 │   ├── init.sql        # Copied from files/
 │   └── ... your code ...
 └── fix-bug-456/        # Bug fix worktree
-    ├── .git            # Points to ../.bare
+    ├── .git            # Points to ../.git
     ├── .env            # Generated from .env.tmpl
     ├── init.sql        # Copied from files/
     └── ... your code ...

@@ -72,7 +72,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Find root directory
 	rootDir, err := config.FindRoot()
 	if err != nil {
-		return fmt.Errorf("not in a worktree-managed repository (no .bare directory found)")
+		return fmt.Errorf("not in a worktree-managed repository (no .worktree directory found)")
 	}
 
 	// Resolve config directory

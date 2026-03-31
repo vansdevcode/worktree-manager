@@ -23,6 +23,12 @@ func setupTestRepo(t *testing.T) (rootDir, bareDir string, cleanup func()) {
 	rootDir = tmpDir
 	bareDir = config.GetBareDir(rootDir)
 
+	// Create .worktree directory so FindRoot can identify this as a wtm repo
+	if err := os.MkdirAll(config.GetWorktreeDir(rootDir), 0755); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		t.Fatalf("Failed to create .worktree dir: %v", err)
+	}
+
 	// Initialize bare repo
 	if err := git.InitBare(bareDir); err != nil {
 		_ = os.RemoveAll(tmpDir)
