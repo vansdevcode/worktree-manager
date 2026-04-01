@@ -66,7 +66,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	bareDir := filepath.Join(directory, ".bare")
+	bareDir := filepath.Join(directory, ".git")
 	worktreeDir := filepath.Join(directory, ".worktree")
 
 	// Create .worktree directory structure
@@ -102,12 +102,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 		if err := git.ConfigSet(bareDir, "remote.origin.fetch", "+refs/heads/*:refs/remotes/origin/*"); err != nil {
 			return fmt.Errorf("failed to configure remote.origin.fetch: %w", err)
 		}
-	}
-
-	// Create .git file pointing to the bare repository
-	gitFilePath := filepath.Join(directory, ".git")
-	if err := os.WriteFile(gitFilePath, []byte("gitdir: ./.bare\n"), 0644); err != nil {
-		return fmt.Errorf("failed to create .git file: %w", err)
 	}
 
 	// Get default branch

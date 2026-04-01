@@ -13,7 +13,7 @@ type Config struct {
 	NoHooks     bool
 }
 
-// FindRoot walks up the directory tree to find the .bare directory
+// FindRoot walks up the directory tree to find the .worktree directory
 func FindRoot() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -21,12 +21,12 @@ func FindRoot() (string, error) {
 	}
 
 	for {
-		bareDir := filepath.Join(currentDir, ".bare")
+		wtDir := filepath.Join(currentDir, ".worktree")
 
-		if fi, err := os.Lstat(bareDir); err == nil {
-            if fi.Mode()&os.ModeSymlink == 0 && fi.IsDir() {
-                return currentDir, nil
-            }
+		if fi, err := os.Lstat(wtDir); err == nil {
+			if fi.Mode()&os.ModeSymlink == 0 && fi.IsDir() {
+				return currentDir, nil
+			}
 		}
 
 		parent := filepath.Dir(currentDir)
@@ -41,7 +41,7 @@ func FindRoot() (string, error) {
 
 // GetBareDir returns the path to the bare repository
 func GetBareDir(rootDir string) string {
-	return filepath.Join(rootDir, ".bare")
+	return filepath.Join(rootDir, ".git")
 }
 
 // GetWorktreeDir returns the path to the worktree metadata directory
