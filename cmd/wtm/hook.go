@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/spf13/cobra"
-	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/state"
 )
 
@@ -15,13 +14,13 @@ var hookCmd = &cobra.Command{
 	Short: "Process and execute a templated hook script",
 	Long: `Process a hook script as a Go template with gomplate functions, then execute it.
 
-Looks up the hook by name in .worktree/hooks/ directory.
+Looks up the hook by name in .wtm.toml config.
 
 The script has access to template variables:
   - .Branch: The branch name (e.g., "feature/user-auth")
   - .Directory: Absolute path to worktree directory
   - .RootDirectory: Absolute path to repository root
-  - .Vars: Custom variables set via -v flag (e.g., {{ index .Vars "ticket" }})
+  - .Vars: Custom variables from config and state
 
 And all gomplate functions (https://docs.gomplate.ca/functions/):
   - strings.Slug: Convert to URL-friendly slug
@@ -34,14 +33,14 @@ It will automatically infer the worktree context from the current working direct
 Example:
   cd /path/to/root/my-branch && wtm hook post-create`,
 	Args: cobra.ExactArgs(1),
-	RunE: runHook,
+	RunE: runHookCmd,
 }
 
 func init() {
 	rootCmd.AddCommand(hookCmd)
 }
 
-func runHook(cmd *cobra.Command, args []string) error {
+func runHookCmd(cmd *cobra.Command, args []string) error {
 	hookName := args[0]
 
 	// Get current working directory
@@ -56,13 +55,21 @@ func runHook(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Load custom variables from state
-	var vars map[string]string
-	if s, err := state.Load(ctx.RootDirectory, ctx.Directory); err == nil && s.Vars != nil {
-		vars = s.Vars
+	// Load config
+	cfg, err := loadConfigFromRoot(ctx.RootDirectory)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
-	return hook.RunHookByName(ctx.RootDirectory, hookName, ctx.Branch, ctx.Directory, vars)
+	// Load custom variables from state and merge with config vars
+	var vars map[string]string
+	if s, err := state.Load(ctx.RootDirectory, ctx.Directory); err == nil && s.Vars != nil {
+		vars = mergeVars(cfg.Vars, s.Vars)
+	} else {
+		vars = cfg.Vars
+	}
+
+	return runConfigHook(cfg, hookName, ctx.Branch, ctx.Directory, ctx.RootDirectory, vars)
 }
 
 // inferWorktreeContext determines the worktree context from the current working directory
@@ -77,7 +84,7 @@ func inferWorktreeContext(cwd string) (struct {
 		RootDirectory string
 	}{}
 
-	// Find the root directory by looking for .worktree directory
+	// Find the root directory by looking for .wtm.toml
 	absPath, err := filepath.Abs(cwd)
 	if err != nil {
 		return result, fmt.Errorf("failed to resolve current directory: %w", err)
@@ -86,15 +93,14 @@ func inferWorktreeContext(cwd string) (struct {
 	currentDir := absPath
 	var rootDirectory string
 	for {
-		worktreeDir := filepath.Join(currentDir, ".worktree")
-		if info, err := os.Stat(worktreeDir); err == nil && info.IsDir() {
+		configPath := filepath.Join(currentDir, ".wtm.toml")
+		if _, err := os.Stat(configPath); err == nil {
 			rootDirectory = currentDir
 			break
 		}
 		parent := filepath.Dir(currentDir)
 		if parent == currentDir {
-			// Reached filesystem root without finding .worktree
-			return result, fmt.Errorf("not in a worktree directory: .worktree directory not found")
+			return result, fmt.Errorf("not in a worktree directory: .wtm.toml not found")
 		}
 		currentDir = parent
 	}
@@ -102,12 +108,10 @@ func inferWorktreeContext(cwd string) (struct {
 	result.RootDirectory = rootDirectory
 
 	// Check if cwd is directly in a branch directory
-	// Branch directories are children of root directory
 	if filepath.Dir(absPath) != rootDirectory {
 		return result, fmt.Errorf("must be run from a branch directory (direct child of root), not a subdirectory")
 	}
 
-	// The branch directory is the cwd itself
 	result.Directory = absPath
 	result.Branch = filepath.Base(absPath)
 

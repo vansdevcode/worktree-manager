@@ -7,13 +7,12 @@ import (
 
 // Config holds the configuration for the worktree manager
 type Config struct {
-	RootDir     string
-	BareDir     string
-	WorktreeDir string
-	NoHooks     bool
+	RootDir string
+	BareDir string
+	NoHooks bool
 }
 
-// FindRoot walks up the directory tree to find the .worktree directory
+// FindRoot walks up the directory tree to find a directory containing .wtm.toml.
 func FindRoot() (string, error) {
 	currentDir, err := os.Getwd()
 	if err != nil {
@@ -21,12 +20,9 @@ func FindRoot() (string, error) {
 	}
 
 	for {
-		wtDir := filepath.Join(currentDir, ".worktree")
-
-		if fi, err := os.Lstat(wtDir); err == nil {
-			if fi.Mode()&os.ModeSymlink == 0 && fi.IsDir() {
-				return currentDir, nil
-			}
+		configPath := filepath.Join(currentDir, ".wtm.toml")
+		if _, err := os.Stat(configPath); err == nil {
+			return currentDir, nil
 		}
 
 		parent := filepath.Dir(currentDir)
@@ -44,17 +40,7 @@ func GetBareDir(rootDir string) string {
 	return filepath.Join(rootDir, ".git")
 }
 
-// GetWorktreeDir returns the path to the worktree metadata directory
-func GetWorktreeDir(rootDir string) string {
-	return filepath.Join(rootDir, ".worktree")
-}
-
-// GetFilesDir returns the path to the files directory
-func GetFilesDir(rootDir string) string {
-	return filepath.Join(rootDir, ".worktree", "files")
-}
-
-// GetHookPath returns the path to a hook script
-func GetHookPath(rootDir, hookName string) string {
-	return filepath.Join(rootDir, ".worktree", "hooks", hookName)
+// GetStateDir returns the path to the wtm state directory inside the bare repo
+func GetStateDir(rootDir string) string {
+	return filepath.Join(rootDir, ".git", "wtm-state")
 }

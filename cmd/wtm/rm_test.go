@@ -23,12 +23,6 @@ func setupTestRepo(t *testing.T) (rootDir, bareDir string, cleanup func()) {
 	rootDir = tmpDir
 	bareDir = config.GetBareDir(rootDir)
 
-	// Create .worktree directory so FindRoot can identify this as a wtm repo
-	if err := os.MkdirAll(config.GetWorktreeDir(rootDir), 0755); err != nil {
-		_ = os.RemoveAll(tmpDir)
-		t.Fatalf("Failed to create .worktree dir: %v", err)
-	}
-
 	// Initialize bare repo
 	if err := git.InitBare(bareDir); err != nil {
 		_ = os.RemoveAll(tmpDir)
@@ -39,6 +33,13 @@ func setupTestRepo(t *testing.T) (rootDir, bareDir string, cleanup func()) {
 	if err := git.CreateInitialBranch(bareDir, "main"); err != nil {
 		_ = os.RemoveAll(tmpDir)
 		t.Fatalf("CreateInitialBranch failed: %v", err)
+	}
+
+	// Create .wtm.toml so FindRoot can identify this as a wtm repo
+	wtmToml := "[hooks]\n[files]\n[vars]\n"
+	if err := os.WriteFile(filepath.Join(rootDir, ".wtm.toml"), []byte(wtmToml), 0644); err != nil {
+		_ = os.RemoveAll(tmpDir)
+		t.Fatalf("Failed to create .wtm.toml: %v", err)
 	}
 
 	cleanup = func() {

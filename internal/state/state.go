@@ -13,10 +13,10 @@ type State struct {
 }
 
 // statePath returns the state file path for a worktree directory.
-// State is stored at <rootDir>/.worktree/state/<directoryName>.json
+// State is stored at <rootDir>/.git/wtm-state/<directoryName>.json
 func statePath(rootDir, worktreeDir string) string {
 	dirName := filepath.Base(worktreeDir)
-	return filepath.Join(rootDir, ".worktree", "state", dirName+".json")
+	return filepath.Join(rootDir, ".git", "wtm-state", dirName+".json")
 }
 
 // Load reads the state file for a worktree. Returns an empty State if the file doesn't exist.

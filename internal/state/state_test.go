@@ -11,8 +11,8 @@ func TestSaveAndLoad(t *testing.T) {
 	rootDir := t.TempDir()
 	worktreeDir := filepath.Join(rootDir, "feat-ticket-123")
 
-	// Create .worktree directory (mimics real setup)
-	if err := os.MkdirAll(filepath.Join(rootDir, ".worktree"), 0755); err != nil {
+	// Create .git directory (mimics real setup — state lives in .git/wtm-state/)
+	if err := os.MkdirAll(filepath.Join(rootDir, ".git"), 0755); err != nil {
 		t.Fatal(err)
 	}
 
@@ -28,7 +28,7 @@ func TestSaveAndLoad(t *testing.T) {
 	}
 
 	// Verify file was created at expected path
-	expectedPath := filepath.Join(rootDir, ".worktree", "state", "feat-ticket-123.json")
+	expectedPath := filepath.Join(rootDir, ".git", "wtm-state", "feat-ticket-123.json")
 	if _, err := os.Stat(expectedPath); err != nil {
 		t.Fatalf("state file not created at %s: %v", expectedPath, err)
 	}

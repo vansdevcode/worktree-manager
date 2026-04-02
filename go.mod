@@ -3,10 +3,13 @@ module github.com/vansdevcode/worktree-manager
 go 1.25.0
 
 require (
+	github.com/BurntSushi/toml v1.6.0
 	github.com/caddyserver/caddy/v2 v2.11.1
 	github.com/hairyhenderson/gomplate/v4 v4.3.3
+	github.com/jittering/truststore v1.4.4-lib
 	github.com/miekg/dns v1.1.72
 	github.com/spf13/cobra v1.10.2
+	github.com/thejerf/suture/v4 v4.0.6
 	gopkg.in/yaml.v3 v3.0.1
 )
 
@@ -31,7 +34,6 @@ require (
 	github.com/Azure/go-autorest v14.2.0+incompatible // indirect
 	github.com/Azure/go-autorest/autorest/to v0.4.1 // indirect
 	github.com/AzureAD/microsoft-authentication-library-for-go v1.6.0 // indirect
-	github.com/BurntSushi/toml v1.6.0 // indirect
 	github.com/DeRuina/timberjack v1.3.9 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.30.0 // indirect
 	github.com/GoogleCloudPlatform/opentelemetry-operations-go/exporter/metric v0.53.0 // indirect
@@ -212,7 +214,6 @@ require (
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
 	github.com/tailscale/go-winio v0.0.0-20231025203758-c4f33415bf55 // indirect
 	github.com/tailscale/tscert v0.0.0-20251216020129-aea342f6d747 // indirect
-	github.com/thejerf/suture/v4 v4.0.6 // indirect
 	github.com/ugorji/go/codec v1.3.0 // indirect
 	github.com/urfave/cli v1.22.17 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
@@ -287,4 +288,5 @@ require (
 	howett.net/plist v1.0.0 // indirect
 	inet.af/netaddr v0.0.0-20230525184311-b8eac61e914a // indirect
 	k8s.io/client-go v0.33.2 // indirect
+	software.sslmate.com/src/go-pkcs12 v0.2.0 // indirect
 )

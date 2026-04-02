@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"github.com/vansdevcode/worktree-manager/internal/certs"
 	"github.com/vansdevcode/worktree-manager/internal/routing"
 )
 
@@ -57,6 +58,15 @@ func runRegister(_ *cobra.Command, args []string) error {
 
 	if err := routing.Save(routesPath, table); err != nil {
 		return fmt.Errorf("saving routes: %w", err)
+	}
+
+	// Generate TLS certificate for the domain
+	certFile, keyFile, err := certs.EnsureCert(domain)
+	if err != nil {
+		fmt.Printf("Warning: failed to generate certificate: %v\n", err)
+	} else {
+		fmt.Printf("Certificate: %s\n", certFile)
+		fmt.Printf("Key: %s\n", keyFile)
 	}
 
 	fmt.Printf("Registered %s -> %s\n", domain, upstream)
