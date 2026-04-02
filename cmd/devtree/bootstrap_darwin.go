@@ -13,7 +13,7 @@ func bootstrapPlatform() error {
 	// Create /etc/resolver/test with nameserver 127.0.0.1
 	resolverDir := "/etc/resolver"
 	resolverFile := resolverDir + "/test"
-	resolverContent := "nameserver 127.0.0.1\n"
+	resolverContent := "nameserver 127.0.0.1\nport 10053\n"
 
 	if _, err := os.Stat(resolverDir); os.IsNotExist(err) {
 		fmt.Printf("Creating %s (requires sudo)...\n", resolverDir)
@@ -41,7 +41,7 @@ func bootstrapPlatform() error {
 	}
 
 	fmt.Println("\n--- Bootstrap Summary ---")
-	fmt.Println("  [ok] Created /etc/resolver/test (nameserver 127.0.0.1)")
+	fmt.Println("  [ok] Created /etc/resolver/test (nameserver 127.0.0.1, port 10053)")
 	fmt.Println("  [ok] Installed Caddy local CA in system trust store")
 	fmt.Println("")
 	fmt.Println("Next steps:")

@@ -2,6 +2,8 @@ package daemon
 
 import (
 	"bufio"
+	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -12,8 +14,10 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/thejerf/suture/v4"
 	"github.com/vansdevcode/worktree-manager/internal/dashboard"
 	"github.com/vansdevcode/worktree-manager/internal/dns"
+	"github.com/vansdevcode/worktree-manager/internal/process"
 	"github.com/vansdevcode/worktree-manager/internal/proxy"
 	"github.com/vansdevcode/worktree-manager/internal/routing"
 )
@@ -28,6 +32,7 @@ type Daemon struct {
 	httpsPort   int
 	dnsServer   *dns.Server
 	proxyServer *proxy.Server
+	processSup  *process.Supervisor
 }
 
 // New creates a daemon with the given configuration.
@@ -61,7 +66,18 @@ func (d *Daemon) Run() error {
 	}
 	defer func() { _ = d.dnsServer.Stop() }()
 
+	// Create the top-level suture supervisor for process management.
+	root := suture.New("devtree", suture.Spec{
+		EventHook: func(e suture.Event) {
+			log.Printf("[suture] %s", e)
+		},
+	})
+
+	logDir := filepath.Join(filepath.Dir(d.pidPath), "logs")
+	d.processSup = process.NewSupervisor(root, logDir, d.registerRoute, d.unregisterRoute)
+
 	dashSrv := dashboard.New(d.routesPath)
+	dashSrv.SetProcessLister(d.processSup)
 	dashPort, err := dashSrv.Start()
 	if err != nil {
 		_ = d.dnsServer.Stop()
@@ -78,6 +94,15 @@ func (d *Daemon) Run() error {
 	}
 	defer func() { _ = d.proxyServer.Stop() }()
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	go func() {
+		if err := root.Serve(ctx); err != nil {
+			log.Printf("[suture] root supervisor exited: %v", err)
+		}
+	}()
+
 	listener, err := d.startSocket()
 	if err != nil {
 		return fmt.Errorf("starting socket: %w", err)
@@ -91,12 +116,44 @@ func (d *Daemon) Run() error {
 	signal.Notify(sig, syscall.SIGTERM, syscall.SIGINT)
 	<-sig
 
+	cancel() // stop all supervised processes
+
+	return nil
+}
+
+// registerRoute adds a route and reloads the proxy.
+func (d *Daemon) registerRoute(domain, upstream string, meta map[string]string) error {
+	table, err := routing.Load(d.routesPath)
+	if err != nil {
+		return fmt.Errorf("loading routes: %w", err)
+	}
+	table.Register(domain, upstream, meta)
+	if err := routing.Save(d.routesPath, table); err != nil {
+		return fmt.Errorf("saving routes: %w", err)
+	}
+	d.reload()
+	return nil
+}
+
+// unregisterRoute removes a route and reloads the proxy.
+func (d *Daemon) unregisterRoute(domain string) error {
+	table, err := routing.Load(d.routesPath)
+	if err != nil {
+		return fmt.Errorf("loading routes: %w", err)
+	}
+	if err := table.Unregister(domain); err != nil {
+		return err
+	}
+	if err := routing.Save(d.routesPath, table); err != nil {
+		return fmt.Errorf("saving routes: %w", err)
+	}
+	d.reload()
 	return nil
 }
 
 // startSocket creates a Unix socket listener and starts accepting connections
 // in a background goroutine. Each connection can send "reload" to trigger a
-// re-read of routes.yaml and a proxy reload.
+// re-read of routes.yaml and a proxy reload, or JSON commands for process management.
 func (d *Daemon) startSocket() (net.Listener, error) {
 	// Remove stale socket file if it exists.
 	_ = os.Remove(d.socketPath)
@@ -127,10 +184,58 @@ func (d *Daemon) handleConn(conn net.Conn) {
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
-		if line == "reload" {
+		if line == "" {
+			continue
+		}
+		if line[0] == '{' {
+			d.handleJSON(conn, []byte(line))
+		} else if line == "reload" {
 			d.reload()
 		}
 	}
+}
+
+func (d *Daemon) handleJSON(conn net.Conn, data []byte) {
+	var req Request
+	if err := json.Unmarshal(data, &req); err != nil {
+		d.sendResponse(conn, ErrResponse(fmt.Errorf("invalid request: %w", err)))
+		return
+	}
+
+	var resp Response
+	switch req.Cmd {
+	case "process-up":
+		if err := d.processSup.Up(req.ConfigPath, req.WorkDir); err != nil {
+			resp = ErrResponse(err)
+		} else {
+			resp = OKResponse(nil)
+		}
+	case "process-down":
+		if err := d.processSup.Down(req.ConfigPath); err != nil {
+			resp = ErrResponse(err)
+		} else {
+			resp = OKResponse(nil)
+		}
+	case "process-ls":
+		resp = OKResponse(d.processSup.List())
+	case "process-logs":
+		logFile := d.processSup.LogFile(req.Name)
+		if logFile == "" {
+			resp = ErrResponse(fmt.Errorf("process %q not found or has no log file", req.Name))
+		} else {
+			resp = OKResponse(logFile)
+		}
+	default:
+		resp = ErrResponse(fmt.Errorf("unknown command: %s", req.Cmd))
+	}
+
+	d.sendResponse(conn, resp)
+}
+
+func (d *Daemon) sendResponse(conn net.Conn, resp Response) {
+	data, _ := json.Marshal(resp)
+	data = append(data, '\n')
+	_, _ = conn.Write(data)
 }
 
 func (d *Daemon) reload() {

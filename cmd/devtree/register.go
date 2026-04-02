@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -10,29 +9,41 @@ import (
 )
 
 var registerPort int
+var registerSocket string
 var registerMeta []string
 
 var registerCmd = &cobra.Command{
 	Use:   "register <domain>",
-	Short: "Register a domain-to-port mapping",
-	Long: `Register a local service by mapping a domain to a port.
+	Short: "Register a domain-to-upstream mapping",
+	Long: `Register a local service by mapping a domain to a port or Unix socket.
 
 Examples:
   devtree register myapp.test --port 8080
+  devtree register myapp.test --socket /tmp/myapp.sock
   devtree register myapp.test --port 8080 --meta stack=go:1.23 --meta env=dev`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRegister,
 }
 
 func init() {
-	registerCmd.Flags().IntVar(&registerPort, "port", 0, "Port number for the upstream service (required)")
-	_ = registerCmd.MarkFlagRequired("port")
+	registerCmd.Flags().IntVar(&registerPort, "port", 0, "Port number for the upstream service")
+	registerCmd.Flags().StringVar(&registerSocket, "socket", "", "Unix socket path for the upstream service")
+	registerCmd.MarkFlagsMutuallyExclusive("port", "socket")
 	registerCmd.Flags().StringArrayVar(&registerMeta, "meta", nil, "Metadata key=value pairs (can be repeated)")
 }
 
 func runRegister(_ *cobra.Command, args []string) error {
 	domain := args[0]
-	upstream := fmt.Sprintf("localhost:%d", registerPort)
+
+	var upstream string
+	switch {
+	case registerSocket != "":
+		upstream = "unix/" + registerSocket
+	case registerPort != 0:
+		upstream = fmt.Sprintf("localhost:%d", registerPort)
+	default:
+		return fmt.Errorf("either --port or --socket is required")
+	}
 
 	meta := parseMeta(registerMeta)
 
@@ -68,11 +79,6 @@ func parseMeta(pairs []string) map[string]string {
 }
 
 func sendReload() {
-	sockPath := DefaultSocketPath()
-	conn, err := net.Dial("unix", sockPath)
-	if err != nil {
-		return
-	}
-	defer func() { _ = conn.Close() }()
-	_, _ = conn.Write([]byte("reload\n"))
+	client := newClient()
+	_ = client.SendReload()
 }
