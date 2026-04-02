@@ -23,7 +23,7 @@ type TemplateData struct {
 }
 
 // RunHook processes a hook script as a Go template and executes it.
-// hookPath: path to the hook script
+// hookPath: path to the hook script file
 // branchName: the branch name (for template data)
 // branchDirectory: absolute path to the worktree directory
 // rootDirectory: absolute path to the repository root
@@ -49,7 +49,26 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string, vars m
 		return fmt.Errorf("failed to read hook script: %w", err)
 	}
 
-	// Process template
+	return runHookContent(string(content), filepath.Base(hookPath), branchName, branchDirectory, rootDirectory, vars)
+}
+
+// RunHookInline processes inline hook content (from .wtm.toml) as a Go template and executes it.
+// If the content does not start with a shebang, "#!/bin/bash" is prepended.
+func RunHookInline(content, hookName, branchName, branchDirectory, rootDirectory string, vars map[string]string) error {
+	if content == "" {
+		return nil
+	}
+
+	// If no shebang, prepend #!/bin/bash
+	if !strings.HasPrefix(content, "#!") {
+		content = "#!/bin/bash\n" + content
+	}
+
+	return runHookContent(content, hookName, branchName, branchDirectory, rootDirectory, vars)
+}
+
+// runHookContent is the shared implementation for running hook content.
+func runHookContent(content, name, branchName, branchDirectory, rootDirectory string, vars map[string]string) error {
 	templateData := TemplateData{
 		Branch:        branchName,
 		Directory:     branchDirectory,
@@ -60,7 +79,7 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string, vars m
 	ctx := context.Background()
 	funcMap := gomplate.CreateFuncs(ctx)
 
-	tmpl, err := template.New(filepath.Base(hookPath)).Funcs(funcMap).Parse(string(content))
+	tmpl, err := template.New(name).Funcs(funcMap).Parse(content)
 	if err != nil {
 		return fmt.Errorf("failed to parse template: %w", err)
 	}
@@ -75,7 +94,7 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string, vars m
 	interpreter, scriptContent := ExtractShebang(processedContent)
 
 	if interpreter == "" {
-		return fmt.Errorf("no shebang found in hook script %s", filepath.Base(hookPath))
+		return fmt.Errorf("no shebang found in hook script %s", name)
 	}
 
 	// Create temp file with processed script
@@ -112,12 +131,6 @@ func RunHook(hookPath, branchName, branchDirectory, rootDirectory string, vars m
 	}
 
 	return nil
-}
-
-// RunHookByName finds a hook by name in .worktree/hooks/ and runs it.
-func RunHookByName(rootDirectory, hookName, branchName, branchDirectory string, vars map[string]string) error {
-	hookPath := filepath.Join(rootDirectory, ".worktree", "hooks", hookName)
-	return RunHook(hookPath, branchName, branchDirectory, rootDirectory, vars)
 }
 
 // ExtractShebang extracts the shebang line and returns the interpreter and remaining content

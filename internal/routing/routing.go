@@ -44,6 +44,15 @@ func (t *Table) Unregister(domain string) error {
 	return nil
 }
 
+// DomainNames returns all registered domain names.
+func (t *Table) DomainNames() []string {
+	names := make([]string, 0, len(t.Sites))
+	for domain := range t.Sites {
+		names = append(names, domain)
+	}
+	return names
+}
+
 // Get returns a site by domain and whether it exists.
 func (t *Table) Get(domain string) (*Site, bool) {
 	s, ok := t.Sites[domain]

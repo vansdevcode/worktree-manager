@@ -2,11 +2,10 @@ package main
 
 import (
 	"fmt"
-	"os"
-	"os/exec"
 	"runtime"
 
 	"github.com/spf13/cobra"
+	"github.com/vansdevcode/worktree-manager/internal/certs"
 )
 
 var bootstrapCmd = &cobra.Command{
@@ -21,19 +20,10 @@ func runBootstrap(_ *cobra.Command, _ []string) error {
 	return bootstrapPlatform()
 }
 
-func runCaddyTrust() error {
-	caddyPath, err := exec.LookPath("caddy")
-	if err != nil {
-		fmt.Println("Warning: caddy not found in PATH. Please install Caddy and run 'caddy trust' manually.")
-		return nil
-	}
-
-	cmd := exec.Command(caddyPath, "trust")
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	cmd.Stdin = os.Stdin
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("running caddy trust: %w", err)
+func installCA() error {
+	fmt.Println("Installing local CA certificate into system trust store...")
+	if err := certs.EnsureCA(); err != nil {
+		return fmt.Errorf("installing CA: %w", err)
 	}
 	return nil
 }

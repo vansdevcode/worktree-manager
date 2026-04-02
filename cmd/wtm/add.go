@@ -11,11 +11,11 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vansdevcode/worktree-manager/internal/config"
 	"github.com/vansdevcode/worktree-manager/internal/git"
-	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/pr"
 	"github.com/vansdevcode/worktree-manager/internal/state"
 	"github.com/vansdevcode/worktree-manager/internal/template"
 	"github.com/vansdevcode/worktree-manager/internal/worktree"
+	"github.com/vansdevcode/worktree-manager/internal/wtmconfig"
 	"github.com/vansdevcode/worktree-manager/pkg/ui"
 )
 
@@ -41,13 +41,11 @@ Examples:
 var (
 	addNoHooks bool
 	addVars    []string
-	addCfgDir  string
 )
 
 func init() {
 	addCmd.Flags().BoolVar(&addNoHooks, "no-hooks", false, "Skip running hooks")
 	addCmd.Flags().StringArrayVarP(&addVars, "var", "v", nil, "Set custom variable (key=value), can be repeated")
-	addCmd.Flags().StringVar(&addCfgDir, "cfg-dir", "", "Configuration directory (default: .worktree)")
 }
 
 // normalizeRemoteBranch extracts the local branch name from a remote branch reference
@@ -60,10 +58,6 @@ func normalizeRemoteBranch(branchRef string) (string, string) {
 		return localName, branchRef
 	}
 
-	// Check for other remote prefixes (e.g., upstream/main)
-	// For now, only handle origin/ explicitly
-	// Other cases fall through to default behavior
-
 	// Not a remote branch reference, return as-is
 	return branchRef, ""
 }
@@ -72,21 +66,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 	// Find root directory
 	rootDir, err := config.FindRoot()
 	if err != nil {
-		return fmt.Errorf("not in a worktree-managed repository (no .worktree directory found)")
-	}
-
-	// Resolve config directory
-	cfgDir := config.GetWorktreeDir(rootDir) // default: .worktree
-	if addCfgDir != "" {
-		if filepath.IsAbs(addCfgDir) {
-			cfgDir = addCfgDir
-		} else {
-			cwd, err := os.Getwd()
-			if err != nil {
-				return fmt.Errorf("failed to get working directory: %w", err)
-			}
-			cfgDir = filepath.Join(cwd, addCfgDir)
-		}
+		return fmt.Errorf("not in a worktree-managed repository (no .wtm.toml found)")
 	}
 
 	bareDir := config.GetBareDir(rootDir)
@@ -157,10 +137,22 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	// Load config from an existing worktree that has .wtm.toml.
+	// We read from the root directory itself since .wtm.toml might be there,
+	// or from the default branch worktree. Try rootDir first as that's where
+	// FindRoot found .wtm.toml.
+	cfg, err := loadConfigFromRoot(rootDir)
+	if err != nil {
+		ui.Warning("Failed to load config: %v", err)
+		cfg = &wtmconfig.Config{}
+	}
+
+	// Merge config vars with command-line vars (command-line wins)
+	mergedVars := mergeVars(cfg.Vars, vars)
+
 	// Run pre-create hook
 	if !addNoHooks {
-		hookPath := filepath.Join(cfgDir, "hooks", "pre-create")
-		if err := hook.RunHook(hookPath, newBranch, worktreePath, rootDir, vars); err != nil {
+		if err := runConfigHook(cfg, "pre-create", newBranch, worktreePath, rootDir, mergedVars); err != nil {
 			return fmt.Errorf("pre-create hook failed: %w", err)
 		}
 	}
@@ -200,14 +192,11 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 
 		if localBranchExists {
-			// Local branch exists - check out directly
 			ui.Info("Creating worktree for existing branch: %s", newBranch)
 			if err := git.AddWorktree(bareDir, newBranch, worktreePath, ""); err != nil {
 				return fmt.Errorf("failed to create worktree: %w", err)
 			}
 		} else {
-			// Local branch doesn't exist - create it from startPoint or baseBranch
-			// Use startPoint if it was a remote branch reference, otherwise use baseBranch
 			createFrom := baseBranch
 			if startPoint != "" {
 				createFrom = startPoint
@@ -221,7 +210,7 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Save state if there are custom variables
+	// Save state if there are command-line variables
 	if len(vars) > 0 {
 		s := &state.State{Vars: vars}
 		if err := state.Save(rootDir, worktreePath, s); err != nil {
@@ -229,25 +218,29 @@ func runAdd(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Process files
-	filesDir := filepath.Join(cfgDir, "files")
-	if _, err := os.Stat(filesDir); err == nil {
+	// Process files from config
+	if len(cfg.Files) > 0 {
 		ui.Info("Processing files...")
+		files := make(map[string]template.FileSpec, len(cfg.Files))
+		for k, v := range cfg.Files {
+			files[k] = template.FileSpec{Template: v.Template, Copy: v.Copy}
+		}
 		data := template.TemplateData{
 			Branch:        newBranch,
 			Directory:     worktreePath,
 			RootDirectory: rootDir,
-			Vars:          vars,
+			Vars:          mergedVars,
 		}
-		if err := template.ProcessTemplates(filesDir, worktreePath, data); err != nil {
+		// Source files are relative to the worktree that contains .wtm.toml
+		sourceDir := findWtmTomlDir(rootDir)
+		if err := template.ProcessFiles(files, sourceDir, worktreePath, data); err != nil {
 			ui.Warning("Failed to process files: %v", err)
 		}
 	}
 
 	// Run post-create hook
 	if !addNoHooks {
-		hookPath := filepath.Join(cfgDir, "hooks", "post-create")
-		if err := hook.RunHook(hookPath, newBranch, worktreePath, rootDir, vars); err != nil {
+		if err := runConfigHook(cfg, "post-create", newBranch, worktreePath, rootDir, mergedVars); err != nil {
 			return fmt.Errorf("post-create hook failed: %w", err)
 		}
 	}
@@ -273,4 +266,63 @@ func parseVars(raw []string) (map[string]string, error) {
 		vars[key] = value
 	}
 	return vars, nil
+}
+
+// mergeVars merges config vars with command-line vars. Command-line vars win.
+func mergeVars(configVars, cliVars map[string]string) map[string]string {
+	if len(configVars) == 0 && len(cliVars) == 0 {
+		return nil
+	}
+	result := make(map[string]string)
+	for k, v := range configVars {
+		result[k] = v
+	}
+	for k, v := range cliVars {
+		result[k] = v
+	}
+	return result
+}
+
+// loadConfigFromRoot loads the wtm config by finding .wtm.toml in the root directory
+// or any worktree within it.
+func loadConfigFromRoot(rootDir string) (*wtmconfig.Config, error) {
+	// First check if .wtm.toml is directly in rootDir (e.g., rootDir IS a worktree)
+	if _, err := os.Stat(filepath.Join(rootDir, ".wtm.toml")); err == nil {
+		return wtmconfig.Load(rootDir, rootDir)
+	}
+
+	// Otherwise, scan for worktrees that contain .wtm.toml
+	entries, err := os.ReadDir(rootDir)
+	if err != nil {
+		return &wtmconfig.Config{}, nil
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		wtmPath := filepath.Join(rootDir, entry.Name(), ".wtm.toml")
+		if _, err := os.Stat(wtmPath); err == nil {
+			return wtmconfig.Load(filepath.Join(rootDir, entry.Name()), rootDir)
+		}
+	}
+
+	return &wtmconfig.Config{}, nil
+}
+
+// findWtmTomlDir finds the directory containing .wtm.toml within the root.
+func findWtmTomlDir(rootDir string) string {
+	if _, err := os.Stat(filepath.Join(rootDir, ".wtm.toml")); err == nil {
+		return rootDir
+	}
+	entries, _ := os.ReadDir(rootDir)
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		dir := filepath.Join(rootDir, entry.Name())
+		if _, err := os.Stat(filepath.Join(dir, ".wtm.toml")); err == nil {
+			return dir
+		}
+	}
+	return rootDir
 }

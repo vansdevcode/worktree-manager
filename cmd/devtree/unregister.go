@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
+	"github.com/vansdevcode/worktree-manager/internal/certs"
 	"github.com/vansdevcode/worktree-manager/internal/routing"
 )
 
@@ -33,6 +34,11 @@ func runUnregister(_ *cobra.Command, args []string) error {
 
 	if err := routing.Save(routesPath, table); err != nil {
 		return fmt.Errorf("saving routes: %w", err)
+	}
+
+	// Clean up certificate if no other domains share the same base domain
+	if err := certs.RemoveCertIfUnused(domain, table); err != nil {
+		fmt.Printf("Warning: failed to clean up certificate: %v\n", err)
 	}
 
 	fmt.Printf("Unregistered %s\n", domain)

@@ -2,6 +2,7 @@
 
 This example demonstrates how to use Worktree Manager with Laravel Herd.
 
-- `files` and `hooks` directories must be inside the `.worktree/` folder where `wtm` is initialized.
-- `post-create` hook will install dependencies and link the worktree to Laravel Herd. It will make a database copy for the specific branch.
-- `post-delete` will delete the branch database and unlink from Laravel Herd.
+- `.wtm.toml` is committed to the repository with hooks, files, and default variables.
+- Template and static files referenced in `[files]` live in the `.wtm/` directory.
+- `post-create` hook installs dependencies, links to Herd, and clones the database.
+- `pre-delete` hook drops the branch database and unlinks from Herd.

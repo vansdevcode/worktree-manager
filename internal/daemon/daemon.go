@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"github.com/thejerf/suture/v4"
+	"github.com/vansdevcode/worktree-manager/internal/certs"
 	"github.com/vansdevcode/worktree-manager/internal/dashboard"
 	"github.com/vansdevcode/worktree-manager/internal/dns"
 	"github.com/vansdevcode/worktree-manager/internal/process"
@@ -121,7 +122,7 @@ func (d *Daemon) Run() error {
 	return nil
 }
 
-// registerRoute adds a route and reloads the proxy.
+// registerRoute adds a route, generates a TLS certificate, and reloads the proxy.
 func (d *Daemon) registerRoute(domain, upstream string, meta map[string]string) error {
 	table, err := routing.Load(d.routesPath)
 	if err != nil {
@@ -131,6 +132,12 @@ func (d *Daemon) registerRoute(domain, upstream string, meta map[string]string) 
 	if err := routing.Save(d.routesPath, table); err != nil {
 		return fmt.Errorf("saving routes: %w", err)
 	}
+
+	// Generate TLS certificate for the domain
+	if _, _, err := certs.EnsureCert(domain); err != nil {
+		log.Printf("warning: failed to generate certificate for %s: %v", domain, err)
+	}
+
 	d.reload()
 	return nil
 }

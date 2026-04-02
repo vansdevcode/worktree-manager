@@ -52,14 +52,14 @@ func bootstrapSystemdResolved() error {
 		return fmt.Errorf("restarting systemd-resolved: %w", err)
 	}
 
-	fmt.Println("\nInstalling Caddy local CA certificate...")
-	if err := runCaddyTrust(); err != nil {
+	fmt.Println()
+	if err := installCA(); err != nil {
 		return err
 	}
 
 	fmt.Println("\n--- Bootstrap Summary ---")
 	fmt.Printf("  [ok] Configured DNS via systemd-resolved (%s)\n", dropInFile)
-	fmt.Println("  [ok] Installed Caddy local CA in system trust store")
+	fmt.Println("  [ok] Installed local CA in system trust store")
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	fmt.Println("  1. Run: devtree start")
@@ -90,14 +90,14 @@ func bootstrapResolvConf() error {
 		}
 	}
 
-	fmt.Println("\nInstalling Caddy local CA certificate...")
-	if err := runCaddyTrust(); err != nil {
+	fmt.Println()
+	if err := installCA(); err != nil {
 		return err
 	}
 
 	fmt.Println("\n--- Bootstrap Summary ---")
 	fmt.Println("  [ok] Configured DNS via /etc/resolv.conf")
-	fmt.Println("  [ok] Installed Caddy local CA in system trust store")
+	fmt.Println("  [ok] Installed local CA in system trust store")
 	fmt.Println("")
 	fmt.Println("Next steps:")
 	fmt.Println("  1. Run: devtree start")

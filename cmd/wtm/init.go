@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/vansdevcode/worktree-manager/internal/git"
-	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/template"
+	"github.com/vansdevcode/worktree-manager/internal/wtmconfig"
 	"github.com/vansdevcode/worktree-manager/pkg/ui"
 )
 
@@ -67,12 +67,6 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	bareDir := filepath.Join(directory, ".git")
-	worktreeDir := filepath.Join(directory, ".worktree")
-
-	// Create .worktree directory structure
-	if err := os.MkdirAll(filepath.Join(worktreeDir, "files"), 0755); err != nil {
-		return fmt.Errorf("failed to create .worktree directory: %w", err)
-	}
 
 	ui.Info("Initializing repository in %s", directory)
 
@@ -118,23 +112,60 @@ func runInit(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to create worktree: %w", err)
 	}
 
-	// Process files
-	filesDir := filepath.Join(worktreeDir, "files")
-	if _, err := os.Stat(filesDir); err == nil {
+	// Create .wtm.toml scaffold if it doesn't already exist in the repo
+	wtmTomlPath := filepath.Join(worktreePath, ".wtm.toml")
+	if _, err := os.Stat(wtmTomlPath); os.IsNotExist(err) {
+		scaffold := `[hooks]
+# post-create = "npm install"
+# pre-delete = "echo 'cleaning up'"
+
+[files]
+# ".env" = { template = ".wtm/env.tmpl" }
+# "config/local.yml" = { copy = ".wtm/local.yml" }
+
+[vars]
+# db_host = "localhost"
+# db_port = "5432"
+`
+		if err := os.WriteFile(wtmTomlPath, []byte(scaffold), 0644); err != nil {
+			ui.Warning("Failed to create .wtm.toml: %v", err)
+		}
+	}
+
+	// Add .wtm.local.toml to .git/info/exclude
+	excludePath := filepath.Join(bareDir, "info", "exclude")
+	if err := addToExclude(excludePath, ".wtm.local.toml"); err != nil {
+		ui.Warning("Failed to add .wtm.local.toml to .git/info/exclude: %v", err)
+	}
+
+	// Load config and process files/hooks
+	cfg, err := wtmconfig.Load(worktreePath, directory)
+	if err != nil {
+		ui.Warning("Failed to load config: %v", err)
+		cfg = &wtmconfig.Config{}
+	}
+
+	// Process files from config
+	if len(cfg.Files) > 0 {
 		ui.Info("Processing files...")
+		files := make(map[string]template.FileSpec, len(cfg.Files))
+		for k, v := range cfg.Files {
+			files[k] = template.FileSpec{Template: v.Template, Copy: v.Copy}
+		}
 		data := template.TemplateData{
 			Branch:        defaultBranch,
 			Directory:     worktreePath,
 			RootDirectory: directory,
+			Vars:          cfg.Vars,
 		}
-		if err := template.ProcessTemplates(filesDir, worktreePath, data); err != nil {
+		if err := template.ProcessFiles(files, worktreePath, worktreePath, data); err != nil {
 			ui.Warning("Failed to process files: %v", err)
 		}
 	}
 
 	// Run post-create hook
 	if !initNoHooks {
-		if err := hook.RunHookByName(directory, "post-create", defaultBranch, worktreePath, nil); err != nil {
+		if err := runConfigHook(cfg, "post-create", defaultBranch, worktreePath, directory, cfg.Vars); err != nil {
 			return fmt.Errorf("post-create hook failed: %w", err)
 		}
 	}
@@ -144,4 +175,33 @@ func runInit(cmd *cobra.Command, args []string) error {
 	ui.Info("  Default branch worktree: %s", worktreePath)
 
 	return nil
+}
+
+// addToExclude appends a pattern to .git/info/exclude if not already present.
+func addToExclude(excludePath, pattern string) error {
+	if err := os.MkdirAll(filepath.Dir(excludePath), 0755); err != nil {
+		return err
+	}
+
+	content, err := os.ReadFile(excludePath)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+
+	// Check if already present
+	for _, line := range strings.Split(string(content), "\n") {
+		if strings.TrimSpace(line) == pattern {
+			return nil
+		}
+	}
+
+	// Append
+	f, err := os.OpenFile(excludePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	_, err = fmt.Fprintf(f, "\n%s\n", pattern)
+	return err
 }

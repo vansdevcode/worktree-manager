@@ -9,8 +9,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/vansdevcode/worktree-manager/internal/config"
 	"github.com/vansdevcode/worktree-manager/internal/git"
-	"github.com/vansdevcode/worktree-manager/internal/hook"
 	"github.com/vansdevcode/worktree-manager/internal/state"
+	"github.com/vansdevcode/worktree-manager/internal/wtmconfig"
 	"github.com/vansdevcode/worktree-manager/pkg/ui"
 )
 
@@ -43,7 +43,7 @@ func runRm(cmd *cobra.Command, args []string) error {
 	// Find root directory
 	rootDir, err := config.FindRoot()
 	if err != nil {
-		return fmt.Errorf("not in a worktree-managed repository (no .worktree directory found)")
+		return fmt.Errorf("not in a worktree-managed repository (no .wtm.toml found)")
 	}
 
 	bareDir := config.GetBareDir(rootDir)
@@ -64,7 +64,6 @@ func runRm(cmd *cobra.Command, args []string) error {
 	// Get current directory and check if we're inside the worktree to be removed
 	currentDir, err := os.Getwd()
 	if err == nil {
-		// Normalize paths for comparison
 		currentDirAbs, err := filepath.Abs(currentDir)
 		if err != nil {
 			return fmt.Errorf("failed to get absolute path: %w", err)
@@ -104,28 +103,34 @@ func runRm(cmd *cobra.Command, args []string) error {
 		if !rmForce {
 			return fmt.Errorf("failed to determine branch name: %w (use --force to remove anyway)", err)
 		}
-		// With --force, proceed without hooks/branch deletion
 		ui.Warning("⚠ Could not determine branch name: %v", err)
 		ui.Warning("⚠ Skipping hooks and branch deletion")
-		branchName = "" // Clear branch name to skip hooks
+		branchName = ""
 	}
 
-	// Load state for hook vars
+	// Load config and state for hooks
+	cfg, cfgErr := loadConfigFromRoot(rootDir)
+	if cfgErr != nil {
+		cfg = &wtmconfig.Config{}
+	}
+
 	var vars map[string]string
 	if s, err := state.Load(rootDir, worktreePath); err == nil && s.Vars != nil {
-		vars = s.Vars
+		vars = mergeVars(cfg.Vars, s.Vars)
+	} else {
+		vars = cfg.Vars
 	}
 
 	// Run pre-delete hook
 	if !rmNoHooks && branchName != "" {
-		if err := hook.RunHookByName(rootDir, "pre-delete", branchName, worktreePath, vars); err != nil {
+		if err := runConfigHook(cfg, "pre-delete", branchName, worktreePath, rootDir, vars); err != nil {
 			return fmt.Errorf("pre-delete hook failed: %w", err)
 		}
 	}
 
 	// Run post-delete hook before removal (while worktree still exists)
 	if !rmNoHooks && branchName != "" {
-		if err := hook.RunHookByName(rootDir, "post-delete", branchName, worktreePath, vars); err != nil {
+		if err := runConfigHook(cfg, "post-delete", branchName, worktreePath, rootDir, vars); err != nil {
 			return fmt.Errorf("post-delete hook failed: %w", err)
 		}
 	}
